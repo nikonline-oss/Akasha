@@ -74,11 +74,15 @@ public class SyncService
     {
         var changes = new List<SyncChange>();
 
-        foreach (var e in await _db.Entries.Where(e => e.UpdatedAt > since).ToListAsync(ct))
+        // SQLite хранит DateTimeOffset как TEXT с квантизацией до миллисекунд;
+        // сравнение "впритык" (same tick) может потерять запись → берём буфер 2 сек.
+        var threshold = since.AddSeconds(-2);
+
+        foreach (var e in await _db.Entries.Where(e => e.UpdatedAt > threshold).ToListAsync(ct))
             changes.Add(new SyncChange("entries", e.DeletedAt is not null ? "delete" : "upsert",
                 SerializeEntry(e), e.UpdatedAt));
 
-        foreach (var p in await _db.Projects.Where(p => p.UpdatedAt > since).ToListAsync(ct))
+        foreach (var p in await _db.Projects.Where(p => p.UpdatedAt > threshold).ToListAsync(ct))
             changes.Add(new SyncChange("projects", p.DeletedAt is not null ? "delete" : "upsert",
                 JsonSerializer.SerializeToElement(new
                 {
@@ -88,12 +92,12 @@ public class SyncService
                     updated_at = p.UpdatedAt, deleted_at = p.DeletedAt
                 }), p.UpdatedAt));
 
-        foreach (var l in await _db.EntryLinks.Where(l => l.CreatedAt > since).ToListAsync(ct))
+        foreach (var l in await _db.EntryLinks.Where(l => l.CreatedAt > threshold).ToListAsync(ct))
             changes.Add(new SyncChange("entry_links", "upsert",
                 JsonSerializer.SerializeToElement(new { from_id = l.FromId, to_id = l.ToId, relation = l.Relation, created_at = l.CreatedAt }),
                 l.CreatedAt));
 
-        foreach (var s in await _db.Scripts.Where(s => s.UpdatedAt > since).ToListAsync(ct))
+        foreach (var s in await _db.Scripts.Where(s => s.UpdatedAt > threshold).ToListAsync(ct))
             changes.Add(new SyncChange("scripts", "upsert",
                 JsonSerializer.SerializeToElement(new
                 {
