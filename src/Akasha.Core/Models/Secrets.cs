@@ -74,4 +74,5 @@ public class AuditLog
     public Guid? TargetId { get; set; }
     public string? Diff { get; set; }                  // jsonb/text
     public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
+    public string? Ip { get; set; }
 }

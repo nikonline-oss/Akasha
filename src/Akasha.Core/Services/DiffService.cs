@@ -20,7 +20,20 @@ public class DiffService
     public record ProposalDiff(
         string Op, string Target, string? AgentName, DateTimeOffset CreatedAt,
         List<DiffLine> Title, List<DiffLine> Body, List<string>? Tags,
-        Dictionary<string, List<DiffLine>>? FieldDiffs, string? ProjectSlug, string? Kind);
+        Dictionary<string, List<DiffLine>>? FieldDiffs, string? ProjectSlug, string? Kind)
+    {
+        /// <summary>Краткое человекочитаемое резюме для уведомлений (Telegram/списки).</summary>
+        public string Summary
+        {
+            get
+            {
+                var added = Title.Count(l => l.Type == "add") + Body.Count(l => l.Type == "add");
+                var removed = Title.Count(l => l.Type == "del") + Body.Count(l => l.Type == "del");
+                var titleLine = Title.FirstOrDefault(l => l.Type is "add" or "ctx")?.Text ?? "";
+                return $"{Op} {Target}: {titleLine} (+{added}/-{removed} lines)";
+            }
+        }
+    };
 
     public async Task<ProposalDiff> BuildAsync(Proposal p, CancellationToken ct = default)
     {

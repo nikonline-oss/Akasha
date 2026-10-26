@@ -18,6 +18,8 @@ public class Proposal
     public DateTimeOffset? ReviewedAt { get; set; }
     public DateTimeOffset? AppliedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>Когда о proposal уведомили владельца (Telegram-бот).</summary>
+    public DateTimeOffset? NotifiedAt { get; set; }
 }
 
 public static class ProposalOp
