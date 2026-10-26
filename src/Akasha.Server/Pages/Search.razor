@@ -1,0 +1,74 @@
+@page "/search"
+@inject SearchService SearchSvc
+
+<MudText Typo="Typo.h5" GutterBottom="true">Поиск</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="7">
+            <MudTextField @bind-Value="_query" Placeholder="Поисковый запрос…" Label="Запрос"
+                          Immediate="false" OnKeyDown="OnKeyDown" />
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudSelect T="string" @bind-Value="_kind" Label="Тип" Clearable="true">
+                @foreach (var k in EntryKinds.All)
+                {
+                    <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" md="3" Class="d-flex align-center gap-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Search" OnClick="Run">Искать</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_searched)
+{
+    <MudText Typo="Typo.body2" Class="mb-2">Найдено: @_hits.Count</MudText>
+    <MudList T="string">
+        @foreach (var h in _hits)
+        {
+            <MudListItem T="string" Icon="@KindIcon(h.Kind)" Caption="@($"{h.Kind} · score {h.Score:F2}")">
+                <div class="d-flex flex-column">
+                    <MudLink Href="@($"/entries/{h.Id}")" Typo="Typo.subtitle1">@h.Title</MudLink>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@h.Snippet</MudText>
+                </div>
+            </MudListItem>
+        }
+    </MudList>
+    @if (_hits.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Ничего не найдено.</MudAlert>
+    }
+}
+
+@code {
+    private string _query = "";
+    private string? _kind;
+    private bool _searched;
+    private List<SearchService.Hit> _hits = new();
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") await Run();
+    }
+
+    private async Task Run()
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return;
+        _hits = await SearchSvc.SearchAsync(_query, kind: _kind);
+        _searched = true;
+    }
+
+    private static string KindIcon(string kind) => kind switch
+    {
+        EntryKinds.Note => Icons.Material.Outlined.StickyNote2,
+        EntryKinds.Decision => Icons.Material.Outlined.Gavel,
+        EntryKinds.Source => Icons.Material.Outlined.Link,
+        EntryKinds.Comment => Icons.Material.Outlined.Chat,
+        EntryKinds.Snippet => Icons.Material.Outlined.Code,
+        _ => Icons.Material.Outlined.Description,
+    };
+}

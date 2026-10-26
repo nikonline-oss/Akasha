@@ -1,0 +1,74 @@
+@page "/scripts"
+@inject AkashaDbContext Db
+@inject ScriptService ScriptSvc
+
+<MudText Typo="Typo.h5" GutterBottom="true">Скрипты (Structured JSON Queries)</MudText>
+
+@if (_scripts.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        Пока нет ни одного скрипта. Скрипты создаются владельцем здесь или предлагаются агентами через
+        <code>propose_script</code> (MCP).
+    </MudAlert>
+}
+
+<MudGrid Spacing="3">
+    @foreach (var s in _scripts)
+    {
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <MudText Typo="Typo.subtitle1">@s.Name</MudText>
+                    <MudChip T="string" Size="Size.Small">v@s.Version · @s.OutputFormat</MudChip>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@s.Slug · ttl @s.CacheTtl s</MudText>
+                @if (!string.IsNullOrEmpty(s.Description))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1">@s.Description</MudText>
+                }
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Class="mt-3"
+                           StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="@(() => RunScript(s))">Запустить</MudButton>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@if (_result is not null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="3">
+        <div class="d-flex justify-space-between align-center mb-2">
+            <MudText Typo="Typo.subtitle1">Результат: @_runName</MudText>
+            <MudChip T="string" Size="Size.Small" Color="@(_cached ? Color.Default : Color.Success)">
+                @(_cached ? "cache hit" : "computed") · @_elapsedMs:F1 ms
+            </MudChip>
+        </div>
+        <pre class="akasha-result pa-3 rounded" style="background:#F4F1FA; overflow:auto; max-height:480px;">@_result</pre>
+    </MudPaper>
+}
+
+@code {
+    private List<Script> _scripts = new();
+    private string? _result;
+    private string _runName = "";
+    private bool _cached;
+    private double _elapsedMs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _scripts = await Db.Scripts.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
+    }
+
+    private async Task RunScript(Script s)
+    {
+        _runName = s.Name;
+        var emptyParams = System.Text.Json.JsonDocument.Parse("{}").RootElement;
+        var res = await ScriptSvc.RunAsync(s.Slug, emptyParams);
+        _result = Pretty(res.Result);
+        _cached = res.Cached;
+        _elapsedMs = res.ElapsedMs;
+        StateHasChanged();
+    }
+
+    private static string Pretty(System.Text.Json.JsonElement el) =>
+        el.GetRawText().Length > 20000 ? el.GetRawText()[..20000] + "\n…(truncated)" : el.GetRawText();
+}
