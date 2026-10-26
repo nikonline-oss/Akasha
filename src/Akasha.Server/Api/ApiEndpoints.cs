@@ -154,7 +154,7 @@ public static class ApiEndpoints
         {
             role = p.IsOwner ? "owner" : "agent",
             name = p.IsOwner ? "owner" : p.Agent!.Name,
-            scopes = p.IsOwner ? new[] { "admin" } : p.Agent!.Scopes,
+            scopes = p.IsOwner ? new List<string> { "admin" } : p.Agent!.Scopes,
         });
     }
 

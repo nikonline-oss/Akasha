@@ -22,7 +22,7 @@ app.MapMcp();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-await ServiceCollectionExtensions.PrepareDatabaseAsync(app.Services);
+await Akasha.Server.ServiceCollectionExtensions.PrepareDatabaseAsync(app.Services);
 
 // запуск Telegram-бота, если настроен
 var bot = app.Services.GetRequiredService<TelegramApproverBot>();

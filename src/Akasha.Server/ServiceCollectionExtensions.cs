@@ -100,7 +100,7 @@ public static class ServiceCollectionExtensions
     {
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AkashaDbContext>();
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<ServiceCollectionExtensions>>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<EmbeddingHostedService>>();
         if (db.IsSqlite)
         {
             await db.Database.EnsureCreatedAsync(ct);
