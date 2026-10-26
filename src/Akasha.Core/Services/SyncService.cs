@@ -35,6 +35,39 @@ public class SyncService
         public SyncRejectException(string m) : base(m) { }
     }
 
+    /// <summary>Применение pull-изменений на стороне portable-клиента (last-write-wins по updated_at).</summary>
+    public async Task<int> ApplyPulledChangesAsync(List<SyncChange> changes, CancellationToken ct = default)
+    {
+        int applied = 0;
+        foreach (var ch in changes)
+        {
+            if (ForbiddenEntities.Contains(ch.Entity))
+                throw new SyncRejectException($"entity '{ch.Entity}' is never synchronized");
+            switch (ch.Entity)
+            {
+                case "entries":
+                {
+                    var (a, _, _) = await PushEntry(ch, "pull", ct);
+                    applied += a;
+                    break;
+                }
+                case "projects":
+                    if (await PushProject(ch, ct)) applied++;
+                    break;
+                case "entry_links":
+                    if (await PushLink(ch, ct)) applied++;
+                    break;
+                case "scripts":
+                    if (await PushScript(ch, ct)) applied++;
+                    break;
+                default:
+                    throw new SyncRejectException($"unknown entity '{ch.Entity}'");
+            }
+        }
+        await _db.SaveChangesAsync(ct);
+        return applied;
+    }
+
     // ─── PULL: всё, что изменилось после `since` ──────────────────────────────
 
     public async Task<List<SyncChange>> PullAsync(DateTimeOffset since, CancellationToken ct = default)
