@@ -6,7 +6,13 @@ using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddAkasha(builder.Configuration, portable: false);
+// AKASHA_PORTABLE=1 включает portable-режим (SQLite + localhost-owner) — используется
+// и Akasha.Portable, и интеграционными тестами (WebApplicationFactory).
+var portableMode = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AKASHA_PORTABLE"));
+
+builder.Services.AddAkasha(builder.Configuration, portable: portableMode);
+if (portableMode)
+    builder.Services.AddSingleton(new AuthMiddlewareOptions(true));
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddMudServices();

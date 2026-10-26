@@ -34,6 +34,9 @@ public static class SessionStore
     }
 }
 
+/// <summary>Опции AuthMiddleware (portable-режим включает localhost-owner без ключа).</summary>
+public sealed record AuthMiddlewareOptions(bool Portable);
+
 /// <summary>
 /// Middleware аутентификации (§5.1/§6): Bearer ak_... → агент; session cookie → owner;
 /// portable-режим → owner без пароля (только localhost). Плюс rate limiting (§6.4).
@@ -43,10 +46,10 @@ public class AuthMiddleware
     private readonly RequestDelegate _next;
     private readonly bool _portable;
 
-    public AuthMiddleware(RequestDelegate next, bool portable = false)
+    public AuthMiddleware(RequestDelegate next, AuthMiddlewareOptions? options = null)
     {
         _next = next;
-        _portable = portable;
+        _portable = options?.Portable ?? false;
     }
 
     public async Task InvokeAsync(HttpContext ctx, IAuthService auth, AkashaDbContext db, RateLimiter limiter)
