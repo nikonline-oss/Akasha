@@ -144,6 +144,8 @@ public class ExportService
         }
 
         var entriesMeta = await ReadJsonAsync(zip, "entries.json", ct);
+
+        // читаем тела записей из markdown-файлов zip (ключ — body_file) до вставки
         var bodies = new Dictionary<string, string>();
         if (entriesMeta is not null)
         {
@@ -159,17 +161,26 @@ public class ExportService
             }
         }
 
+        // записи добавляются до SaveChanges; проекты могут быть ещё не сохранены —
+        // поэтому ProjectId резолвится по Local + БД.
         foreach (var em in entriesMeta ?? new())
         {
             var id = em["id"]!.GetValue<Guid>();
             if (await _db.Entries.AnyAsync(e => e.Id == id, ct)) continue;
             var pid = em["project_id"]?.GetValue<Guid>();
-            if (pid is null && em["project_slug"]?.GetValue<string>() is { } slug)
-                pid = await _db.Projects.Where(p => p.Slug == slug).Select(p => p.Id).FirstOrDefaultAsync(ct);
+            Guid? resolved = null;
+            if (pid is { } pids && _db.Projects.Local.Any(p => p.Id == pids)) resolved = pids;
+            else if (pid is not null && await _db.Projects.AnyAsync(p => p.Id == pid, ct)) resolved = pid;
+            else if (em["project_slug"]?.GetValue<string>() is { } slug)
+            {
+                resolved = _db.Projects.Local.FirstOrDefault(p => p.Slug == slug)?.Id
+                           ?? await _db.Projects.Where(p => p.Slug == slug).Select(p => p.Id).FirstOrDefaultAsync(ct);
+                if (resolved == Guid.Empty) resolved = null;
+            }
             var e = new Entry
             {
                 Id = id,
-                ProjectId = pid,
+                ProjectId = resolved,
                 Kind = em["kind"]?.GetValue<string>() ?? EntryKinds.Note,
                 Title = em["title"]?.GetValue<string>() ?? "",
                 Body = em["body_file"]?.GetValue<string>() is { } f && bodies.TryGetValue(f, out var b) ? b
@@ -185,6 +196,8 @@ public class ExportService
             _db.Entries.Add(e);
             imported++;
         }
+
+        await _db.SaveChangesAsync(ct); // связи ниже ссылаются на эти записи (FK)
 
         var links = await ReadJsonAsync(zip, "entry_links.json", ct);
         foreach (var ln in links ?? new())
