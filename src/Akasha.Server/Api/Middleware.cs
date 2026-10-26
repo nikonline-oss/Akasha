@@ -128,7 +128,8 @@ public class AuthMiddleware
     private static bool IsLocalhost(HttpContext ctx)
     {
         var ip = ctx.Connection.RemoteIpAddress;
-        return ip is not null && (System.Net.IPAddress.IsLoopback(ip) || ip.Equals(ctx.Connection.LocalIpAddress));
+        // null RemoteIpAddress (TestServer / именованные pipe-соединения) — это всегда локальный клиент
+        return ip is null || System.Net.IPAddress.IsLoopback(ip) || ip.Equals(ctx.Connection.LocalIpAddress);
     }
 
     private static Task Fail(HttpContext ctx, int code, string error, string? detail = null)

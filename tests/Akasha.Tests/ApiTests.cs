@@ -7,6 +7,7 @@ using Akasha.Server;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Xunit;
 
 namespace Akasha.Tests;
 
@@ -57,7 +58,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
         var client = Client();
         var body = new StringContent(
             JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, method = "tools/list" }),
-            "application/json");
+            new MediaTypeHeaderValue("application/json"));
         var resp = await client.PostAsync("/mcp", body);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
@@ -77,7 +78,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
             @params = new { name = "akasha_query_schema", arguments = new { } },
         };
         var resp = await client.PostAsync("/mcp",
-            new StringContent(JsonSerializer.Serialize(payload), "application/json"));
+            new StringContent(JsonSerializer.Serialize(payload), new MediaTypeHeaderValue("application/json")));
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
         var text = doc.RootElement.GetProperty("result").GetProperty("content")[0]
@@ -108,7 +109,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
         agentClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
         var propResp = await agentClient.PostAsync("/api/v1/proposals",
-            Json(new { entity = "entry", op = "create",
+            Json(new { op = "create", target = "entries",
                        payload = new { title = "Agent note", body = "Created via API test", kind = "note", project = "apitest" } }));
         Assert.True(propResp.StatusCode is HttpStatusCode.OK or HttpStatusCode.Created,
             $"proposal create failed: {(int)propResp.StatusCode} {await propResp.Content.ReadAsStringAsync()}");
@@ -117,7 +118,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
 
         // owner approves
         var approveResp = await client.PostAsync($"/api/v1/admin/proposals/{proposalId}/approve",
-            new StringContent("", "application/json"));
+            new StringContent("", new MediaTypeHeaderValue("application/json")));
         Assert.True(approveResp.StatusCode == HttpStatusCode.OK,
             $"approve failed: {(int)approveResp.StatusCode} {await approveResp.Content.ReadAsStringAsync()}");
 
@@ -143,5 +144,5 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
         {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-        }), "application/json");
+        }), new MediaTypeHeaderValue("application/json"));
 }
