@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DevLab.JmesPath;
 
 namespace Akasha.Core.Services;
 
@@ -9,12 +10,12 @@ namespace Akasha.Core.Services;
 /// </summary>
 public static class JmesTransform
 {
-    private static readonly JmesPath.Engine JsonM = new(proxyFunctions: null);
+    private static readonly JmesPath Engine = new();
 
     public static object Apply(List<Dictionary<string, object?>> rows, string expression)
     {
         var json = JsonSerializer.Serialize(rows, Options);
-        var resultJson = JsonM.Transform(json, expression);
+        var resultJson = Engine.Transform(json, expression);
         using var doc = JsonDocument.Parse(resultJson);
         return doc.RootElement.Clone();
     }

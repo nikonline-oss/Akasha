@@ -24,7 +24,7 @@ public class HashedNgramEmbeddings : IEmbeddingService
         var vec = new float[Dim];
         if (string.IsNullOrWhiteSpace(text)) return Normalize(vec);
         text = text.ToLowerInvariant();
-        foreach (var m in WordSplit.Matches(text))
+        foreach (System.Text.RegularExpressions.Match m in WordSplit.Matches(text))
         {
             var w = m.Value;
             AddToken(vec, w);

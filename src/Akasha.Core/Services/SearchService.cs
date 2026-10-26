@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Akasha.Core.Data;
 using Akasha.Core.Models;
@@ -80,12 +81,14 @@ public class SearchService
         for (int i = 0; i < ftsRanked.Count; i++)
         {
             var (e, _) = ftsRanked[i];
-            fused[e.Id] = (e, fused.TryGetValue(e.Id, out var cur) ? cur.score : 0) + 1.0 / (k + i + 1);
+            var cur = fused.TryGetValue(e.Id, out var c) ? c.score : 0.0;
+            fused[e.Id] = (e, cur + 1.0 / (k + i + 1));
         }
         for (int i = 0; i < vecRanked.Count; i++)
         {
             var (e, _) = vecRanked[i];
-            fused[e.Id] = (e, fused.TryGetValue(e.Id, out var cur) ? cur.score : 0) + 1.0 / (k + i + 1);
+            var cur = fused.TryGetValue(e.Id, out var c) ? c.score : 0.0;
+            fused[e.Id] = (e, cur + 1.0 / (k + i + 1));
         }
 
         var slugs = await _db.Projects.AsNoTracking()
