@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: akasha
+      POSTGRES_USER: akasha
+      POSTGRES_PASSWORD: ${AKASHA_DB_PASSWORD:-akasha}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akasha"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  akasha:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AKASHA_DATABASE_URL: Host=db;Database=akasha;Username=akasha;Password=${AKASHA_DB_PASSWORD:-akasha}
+      ConnectionStrings__Akasha: Host=db;Database=akasha;Username=akasha;Password=${AKASHA_DB_PASSWORD:-akasha}
+      AKASHA_OWNER_EMAIL: ${AKASHA_OWNER_EMAIL:-owner@localhost}
+      AKASHA_OWNER_PASSWORD: ${AKASHA_OWNER_PASSWORD:-}
+      AKASHA_SECRET_KEY: ${AKASHA_SECRET_KEY:-}
+      AKASHA_TELEGRAM_BOT_TOKEN: ${AKASHA_TELEGRAM_BOT_TOKEN:-}
+      AKASHA_TELEGRAM_CHAT_ID: ${AKASHA_TELEGRAM_CHAT_ID:-}
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "127.0.0.1:8080:8080"   # наружу только через reverse-proxy (см. doc/deployment.md)
+    volumes:
+      - akasha-data:/app/data
+
+volumes:
+  pgdata:
+  akasha-data:

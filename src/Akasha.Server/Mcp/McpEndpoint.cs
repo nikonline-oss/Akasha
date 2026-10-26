@@ -16,7 +16,7 @@ public static class McpEndpoint
 
     public static IEndpointRouteBuilder MapMcp(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/mcp", HandleAsync);
+        app.MapPost("/mcp", (HttpContext ctx, McpService mcp, CancellationToken ct) => HandleAsync(ctx, mcp, ct));
         return app;
     }
 
