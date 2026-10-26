@@ -92,7 +92,7 @@
         if (_scopeRead) scopes.Add(Scopes.Read);
         if (_scopePropose) scopes.Add(Scopes.Propose);
         if (_scopeScripts) scopes.Add(Scopes.Scripts);
-        if (scopes.Count == 0) { Snackbar.Add("Выберите хотя бы один скоуп", Severity.Warn); return; }
+        if (scopes.Count == 0) { Snackbar.Add("Выберите хотя бы один скоуп", Severity.Warning); return; }
 
         var (plaintext, agent) = await Auth.CreateAgentAsync(_name, null, scopes);
         _newKey = plaintext;

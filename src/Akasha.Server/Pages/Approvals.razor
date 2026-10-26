@@ -117,7 +117,7 @@ else
         _rejectOpen = false;
         if (string.IsNullOrWhiteSpace(_rejectComment))
         {
-            Snackbar.Add("Комментарий обязателен", Severity.Warn);
+            Snackbar.Add("Комментарий обязателен", Severity.Warning);
             return;
         }
         await Proposals.RejectAsync(_rejectId, _rejectComment);

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Akasha.Portable</RootNamespace>
+    <AssemblyName>akasha</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Akasha.Core/Akasha.Core.csproj" />
+    <ProjectReference Include="../Akasha.Server/Akasha.Server.csproj" />
+  </ItemGroup>
+</Project>
