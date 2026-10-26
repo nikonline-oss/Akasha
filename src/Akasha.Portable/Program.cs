@@ -50,19 +50,22 @@ return;
 // ═══ serve / portable ═══════════════════════════════════════════════════════
 async Task ServeAsync(bool portableOnly)
 {
-    var builder = WebApplication.CreateBuilder(args.Skip(1).ToArray());
+    // args[0] — имя субкоманды (serve/portable), его быть в конфигурации не должно
+    var hostArgs = args.Length > 0 ? args[1..] : Array.Empty<string>();
+    var builder = WebApplication.CreateBuilder(hostArgs);
     builder.Services.AddAkasha(builder.Configuration, portable: true);
     builder.Services.AddRazorPages();
     builder.Services.AddServerSideBlazor();
     builder.Services.AddMudServices();
     builder.Services.AddHttpClient();
 
-    if (portableOnly)
-    {
-        // ТЗ: portable слушает только localhost, без Telegram/MCP-pub
-        var port = Environment.GetEnvironmentVariable("AKASHA_PORT") ?? "5173";
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
-    }
+    // Порт: --port N (аргумент CLI) > AKASHA_PORT (ENV) > 5173
+    var port = GetOptionValue(hostArgs, "--port") ?? Environment.GetEnvironmentVariable("AKASHA_PORT") ?? "5173";
+
+    // Всегда localhost-привязка (ТЗ §1.1 portable; serve — dev-режим).
+    // UseUrls вызываем безусловно и последним, чтобы перебить hostingDefaults["urls"] (= http://localhost:5000),
+    // который CreateBuilder подставляет из аргументов/ENV и который иначе игнорирует наш порт.
+    builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
     var app = builder.Build();
     // Routing ДО AuthMiddleware: scope-проверки (RequireScope) полагаются на ctx.GetEndpoint()
@@ -74,7 +77,7 @@ async Task ServeAsync(bool portableOnly)
     app.MapFallbackToPage("/_Host");
 
     await Akasha.Server.ServiceCollectionExtensions.PrepareDatabaseAsync(app.Services);
-    Console.WriteLine($"[akasha] portable UI: http://127.0.0.1:{Environment.GetEnvironmentVariable("AKASHA_PORT") ?? "5173"} (SQLite: {sqlitePath})");
+    Console.WriteLine($"[akasha] portable UI: http://127.0.0.1:{port} (SQLite: {sqlitePath})");
     await app.RunAsync();
 }
 
@@ -167,6 +170,13 @@ async Task CreateAgentKeyAsync(IEnumerable<string> rest)
 }
 
 // ═══ helpers ════════════════════════════════════════════════════════════════
+static string? GetOptionValue(string[] args, string name)
+{
+    for (var i = 0; i < args.Length - 1; i++)
+        if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase)) return args[i + 1];
+    return null;
+}
+
 static ServiceProvider BuildProvider()
 {
     var sc = new ServiceCollection();
