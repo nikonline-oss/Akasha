@@ -86,8 +86,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ScriptService>();
         services.AddScoped<SyncService>();
         services.AddScoped<DiffService>();
+        services.AddScoped<ExportService>();
         services.AddScoped<RecordsService>();
         services.AddSingleton<IAuthService, AuthService>();
+        services.AddScoped<Akasha.Server.Mcp.McpService>();
+        // Principal из Items["principal"], заполненного AuthMiddleware (нужен McpService)
+        services.AddHttpContextAccessor();
+        services.AddScoped(sp =>
+        {
+            var http = sp.GetRequiredService<IHttpContextAccessor>().HttpContext;
+            return http is not null && http.Items["principal"] is Akasha.Server.Auth.Principal p
+                ? p
+                : Akasha.Server.Auth.Principal.Owner();
+        });
 
         // фоновый worker генерации эмбеддингов
         services.AddHostedService<EmbeddingWorkerService>();

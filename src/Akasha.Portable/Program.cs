@@ -24,7 +24,10 @@ switch (cmd)
 {
     case "serve":
     case "portable":
-        await ServeAsync(portableOnly: cmd == "portable" || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AKASHA_PORTABLE")));
+        var portableOnly = cmd == "portable" || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AKASHA_PORTABLE"));
+        if (portableOnly)
+            Environment.SetEnvironmentVariable("AKASHA_PORTABLE", "1"); // Server Program.cs читает этот флаг
+        await ServeAsync(portableOnly);
         break;
     case "sync":
         await SyncOnceAsync();

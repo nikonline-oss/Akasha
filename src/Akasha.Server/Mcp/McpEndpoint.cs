@@ -16,7 +16,14 @@ public static class McpEndpoint
 
     public static IEndpointRouteBuilder MapMcp(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/mcp", (HttpContext ctx, McpService mcp, CancellationToken ct) => HandleAsync(ctx, mcp, ct));
+        // ВАЖНО: тело читаем вручную через JsonDocument — если в сигнатуре лямбды есть HttpContext,
+        // RequestDelegateFactory не привязывает другие параметры из DI и пытается десериализовать
+        // McpService из тела запроса (падает с 500 InvalidOperationException).
+        app.MapPost("/mcp", async (HttpContext ctx, IServiceProvider sp, CancellationToken ct) =>
+        {
+            var mcp = sp.GetRequiredService<McpService>();
+            return await HandleAsync(ctx, mcp, ct);
+        });
         return app;
     }
 
