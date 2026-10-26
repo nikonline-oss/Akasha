@@ -334,15 +334,14 @@ public class QueryEngine
     internal const char TagSep = '\u001F';
 
     /// <summary>
-    /// Предикат «запись содержит тег»: сравнивает сериализованный список тегов
-    /// (sep + tags + sep) с LIKE-шаблоном %sep+tag+sep%. EF переводит string.Concat
-    /// в SQL ||, а Like — в LIKE с параметром, поэтому запрос остаётся параметризованным.
+    /// Предикат «запись содержит тег». Колонка tags хранит List&lt;string&gt; через ValueConverter,
+    /// но для переводимого LIKE используется отдельное поле TagsRaw (та же колонка в raw-виде).
+    /// Значение TagsRaw поддерживается синхронно с Tags в AkashaDbContext.SaveChanges*.
     /// </summary>
     private static System.Linq.Expressions.Expression<Func<Entry, bool>> TagPredicate(string tag)
     {
-        var sepStr = TagSep.ToString();
-        var pattern = $"%{sepStr}{tag}{sepStr}%";
-        return e => EF.Functions.Like(sepStr + string.Join(sepStr, e.Tags) + sepStr, pattern);
+        var pattern = $"%{TagSep}{tag}{TagSep}%";
+        return e => EF.Functions.Like(e.TagsRaw!, pattern);
     }
 
     private sealed class Replacer : System.Linq.Expressions.ExpressionVisitor
@@ -355,16 +354,9 @@ public class QueryEngine
 
     /// <summary>
     /// Публичный хелпер: LIKE-паттерн точного совпадения тега в сериализованном списке (\u001F-разделитель).
-    /// Используется QueryEngine и SearchService.
+    /// Используется SearchService.
     /// </summary>
     internal static string TagLikePattern(string tag) => $"%{TagSep}{tag}{TagSep}%";
-
-    /// <summary>LIKE-предикат по тегу через конкатенацию (EF переводит || в SQL).</summary>
-    internal static System.Linq.Expressions.Expression<Func<Entry, bool>> BuildTagPredicate(string tag)
-    {
-        var pattern = TagLikePattern(tag);
-        return e => EF.Functions.Like(e.TagsRaw, pattern);
-    }
 
     private static IQueryable<Entry> ApplyDateCompare(IQueryable<Entry> iq, JsonElement cond,
         JsonElement p, System.Linq.Expressions.Expression<Func<Entry, DateTimeOffset>> selector)

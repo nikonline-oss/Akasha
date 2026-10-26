@@ -100,9 +100,12 @@ public class AkashaDbContext : DbContext
         {
             e.ToTable("entries");
             e.HasIndex(x => new { x.ProjectId, x.Kind, x.UpdatedAt });
-            e.Property(x => x.Tags).HasConversion(strListConv).Metadata.SetValueComparer(strListCmp);
-            // Те же данные в «сыром» виде — для переводимых LIKE-фильтров по тегам.
-            e.Property(x => x.TagsRaw).HasColumnName("tags").HasColumnType("TEXT");
+            // Колонка tags — единая; List<string> конвертируется в TEXT (\u001F-разделитель).
+            e.Property(x => x.Tags).HasColumnName("tags").HasConversion(strListConv).Metadata.SetValueComparer(strListCmp);
+            // TagsRaw — «сырая» копия той же строки тегов в отдельной колонке tags_raw.
+            // Синхронизируется из Tags в AkashaDbContext.SaveChanges* (см. SyncTagsRaw).
+            // Нужна для переводимых LIKE-фильтров по тегам (QueryEngine.TagPredicate).
+            e.Property(x => x.TagsRaw).HasColumnName("tags_raw").HasColumnType("TEXT");
             e.Property(x => x.Metadata).HasConversion(jsonNullableConv);
             e.Property(x => x.Embedding).HasConversion(embConv).Metadata.SetValueComparer(embCmp);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId);
@@ -181,14 +184,29 @@ public class AkashaDbContext : DbContext
     /// <summary>Перехват SaveChanges: инкремент data_version + audit-безопасность bulk-операций (§3.3).</summary>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        SyncTagsRaw();
         BumpDataVersionIfNeeded();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        SyncTagsRaw();
         BumpDataVersionIfNeeded();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    /// <summary>
+    /// Поддерживает TagsRaw (колонка tags_raw) в синхронизации с Tags — для переводимых
+    /// LIKE-фильтров по тегам. Формат: \u001Ftag1\u001Ftag2\u001F (тот же разделитель, что и strListConv).
+    /// </summary>
+    private void SyncTagsRaw()
+    {
+        foreach (var ent in ChangeTracker.Entries<Entry>())
+        {
+            if (ent.State is EntityState.Added or EntityState.Modified)
+                ent.Entity.TagsRaw = "\u001F" + string.Join("\u001F", ent.Entity.Tags ?? new List<string>()) + "\u001F";
+        }
     }
 
     private void BumpDataVersionIfNeeded()
