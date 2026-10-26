@@ -50,7 +50,7 @@ public class ProposalService
                 ValidateEntryPayload(payload, op);
                 break;
             case ProposalTarget.Projects:
-                if (op is ProposalOp.Create or ProposalOp.Update)
+                if (op is ProposalOp.Create)  // для update name опционален — меняем только переданные поля
                 {
                     if (!payload.TryGetProperty("name", out var n) || n.ValueKind != JsonValueKind.String ||
                         string.IsNullOrWhiteSpace(n.GetString()))
@@ -202,6 +202,10 @@ public class ProposalService
             case ProposalOp.Create:
             {
                 var e = MapEntry(p.Payload);
+                // slug проекта резолвим в ProjectId (MapEntry понимает только project_id как Guid)
+                if (e.ProjectId is null && GetStr(p.Payload, "project") is { } projSlug)
+                    e.ProjectId = await ResolveProjectId(projSlug, ct)
+                        ?? throw new ValidationException($"unknown project '{projSlug}'.");
                 e.CreatedBy = p.AgentId?.ToString();
                 e.Embedding = _embeddings.Embed(e.Title + "\n" + e.Body);
                 e.StateHash = ContentHash.Of(e);
