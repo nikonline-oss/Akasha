@@ -34,21 +34,20 @@ public class AkashaDbContext : DbContext
         // ─── Общие конвертеры для JSON/массивов на SQLite ─────────────────────
         var jsonConv = new ValueConverter<JsonElement, string>(
             j => j.ValueKind == JsonValueKind.Undefined ? null! : j.GetRawText(),
-            s => string.IsNullOrEmpty(s) ? JsonDocument.Parse("{}").RootElement
-                                         : JsonDocument.Parse(s).RootElement);
+            s => ParseJsonOrEmpty(s));
         var jsonNullableConv = new ValueConverter<JsonElement?, string?>(
             j => j == null || j.Value.ValueKind == JsonValueKind.Undefined ? null : j.Value.GetRawText(),
-            s => s == null ? null : JsonDocument.Parse(s).RootElement);
+            s => ParseJsonOrNull(s));
         var strListConv = new ValueConverter<List<string>, string>(
             l => string.Join("\u001F", l),
-            s => string.IsNullOrEmpty(s) ? new List<string>() : s.Split('\u001F').ToList());
+            s => SplitStrList(s));
         var strListCmp = new ValueComparer<List<string>>(
             (a, c) => (a ?? new()).SequenceEqual(c ?? new()),
             v => v.Aggregate(0, (acc, x) => HashCode.Combine(acc, x.GetHashCode())),
             v => v.ToList());
         var embConv = new ValueConverter<float[]?, string?>(
             e => e == null ? null : string.Join(',', e.Select(f => f.ToString("R"))),
-            s => string.IsNullOrEmpty(s) ? null : s.Split(',').Select(float.Parse).ToArray());
+            s => ParseFloatArray(s));
         var embCmp = new ValueComparer<float[]>(
             (a, c) => (a ?? Array.Empty<float>()).SequenceEqual(c ?? Array.Empty<float>()),
             v => v.Aggregate(0, (acc, x) => HashCode.Combine(acc, x.GetHashCode())),
@@ -147,6 +146,18 @@ public class AkashaDbContext : DbContext
         });
     }
 
+    private static JsonElement ParseJsonOrEmpty(string s) =>
+        JsonDocument.Parse(string.IsNullOrEmpty(s) ? "{}" : s).RootElement;
+
+    private static JsonElement? ParseJsonOrNull(string? s) =>
+        s is null ? null : JsonDocument.Parse(s).RootElement;
+
+    private static List<string> SplitStrList(string s) =>
+        string.IsNullOrEmpty(s) ? new List<string>() : s.Split('\u001F').ToList();
+
+    private static float[]? ParseFloatArray(string? s) =>
+        string.IsNullOrEmpty(s) ? null : s.Split(',').Select(float.Parse).ToArray();
+
     /// <summary>Перехват SaveChanges: инкремент data_version + audit-безопасность bulk-операций (§3.3).</summary>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -175,7 +186,8 @@ public class AkashaDbContext : DbContext
         }
         else
         {
-            var tracked = Meta.Local.Find(new object?[] { "data_version" }) as MetaEntry;
+            var tracked = ChangeTracker.Entries<MetaEntry>()
+                .FirstOrDefault(en => en.Entity.Key == "data_version")?.Entity;
             if (tracked is not null) tracked.Value += 1;
             else
             {

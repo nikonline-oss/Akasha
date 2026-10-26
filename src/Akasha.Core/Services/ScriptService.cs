@@ -173,7 +173,7 @@ public class ScriptService
                     var ok = expected switch
                     {
                         "string" => pv.Value.ValueKind == JsonValueKind.String,
-                        "integer" => pv.Value.ValueKind == JsonValueKind.Number && pv.Value.HasInt32(),
+                        "integer" => pv.Value.ValueKind == JsonValueKind.Number && pv.Value.TryGetInt32(out _),
                         "number" => pv.Value.ValueKind == JsonValueKind.Number,
                         "boolean" => pv.Value.ValueKind is JsonValueKind.True or JsonValueKind.False,
                         "object" => pv.Value.ValueKind == JsonValueKind.Object,

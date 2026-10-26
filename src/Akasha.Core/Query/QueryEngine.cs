@@ -146,7 +146,7 @@ public class QueryEngine
                 "body" => e.Body,
                 "tags" => e.Tags,
                 "source_url" => e.SourceUrl,
-                "metadata" => e.Metadata is { } m ? m.Value.Clone().GetRawText() : null,
+                "metadata" => e.Metadata is { } m ? m.Clone().GetRawText() : null,
                 "version" => e.Version,
                 "created_by" => e.CreatedBy,
                 "created_at" => e.CreatedAt,

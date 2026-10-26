@@ -22,6 +22,9 @@ public class SyncService
         _db = db; _audit = audit; _embeddings = embeddings;
     }
 
+    /// <summary>Кэш slug→id проектов в рамках экземпляра сервиса (scoped per request).</summary>
+    private readonly Dictionary<string, Guid?> _slugCache = new();
+
     /// <summary>Сущности, которые никогда не отдаются и не принимаются sync-эндпоинтом.</summary>
     public static readonly string[] ForbiddenEntities = { "secrets", "audit_log", "agents", "owners" };
 
@@ -119,7 +122,7 @@ public class SyncService
         if (!data.TryGetProperty("id", out var idEl) || !Guid.TryParse(idEl.GetString(), out var id))
             throw new SyncRejectException("entry change requires id");
 
-        var local = await _db.Entries.FirstOrDefaultAsync(e => e.Id == id, ct);
+        var local = await _db.Entries.Include(e => e.Project).FirstOrDefaultAsync(e => e.Id == id, ct);
         var remoteUpdated = ch.UpdatedAt;
         var remoteHash = data.TryGetProperty("state_hash", out var sh) && sh.ValueKind == JsonValueKind.String
             ? sh.GetString() : null;
@@ -162,7 +165,7 @@ public class SyncService
         return (1, 0, null);
     }
 
-    private static void ApplyEntryFields(Entry e, JsonElement data)
+    private void ApplyEntryFields(Entry e, JsonElement data)
     {
         if (data.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String) e.Title = t.GetString()!;
         if (data.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String) e.Body = b.GetString()!;
@@ -173,17 +176,21 @@ public class SyncService
             e.SourceUrl = su.GetString();
         if (data.TryGetProperty("project_slug", out var ps) && ps.ValueKind == JsonValueKind.String)
         {
-            var proj = e.Project ?? FindBySlugCached(ps.GetString());
-            if (proj is not null) e.ProjectId = proj.Id;
+            var projId = ResolveProjectSlug(ps.GetString());
+            if (projId is not null) e.ProjectId = projId;
         }
     }
 
-    [ThreadStatic] private static Dictionary<string, Guid>? _slugCache;
-    private static Guid? FindBySlugCached(string? slug)
+    private Guid? ResolveProjectSlug(string? slug)
     {
         if (slug is null) return null;
-        _slugCache ??= new();
-        return _slugCache.TryGetValue(slug, out var g) ? g : null;
+        if (_slugCache.TryGetValue(slug, out var cached)) return cached;
+        var id = _db.Projects.AsNoTracking()
+            .Where(p => p.Slug == slug)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefault();
+        _slugCache[slug] = id;
+        return id;
     }
 
     private async Task<bool> PushProject(SyncChange ch, CancellationToken ct)
