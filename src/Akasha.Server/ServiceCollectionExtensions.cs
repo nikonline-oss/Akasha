@@ -74,6 +74,9 @@ public static class ServiceCollectionExtensions
         });
 
         services.AddSingleton<IDbContextFactoryLike>(new DbContextFactory(cs, useSqlite));
+        // portable-режим включает localhost-owner в AuthMiddleware (актуально и для Akasha.Portable host'а)
+        if (portable)
+            services.AddSingleton(new AuthMiddlewareOptions(true));
         services.AddSingleton<IEmbeddingService, HashedNgramEmbeddings>();
         services.AddSingleton<EmbeddingQueue>();
         services.AddSingleton<QueryEngine>();

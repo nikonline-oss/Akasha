@@ -65,6 +65,8 @@ async Task ServeAsync(bool portableOnly)
     }
 
     var app = builder.Build();
+    // Routing ДО AuthMiddleware: scope-проверки (RequireScope) полагаются на ctx.GetEndpoint()
+    app.UseRouting();
     app.UseMiddleware<AuthMiddleware>();
     app.MapAkashaApi();
     app.MapMcp();
@@ -172,6 +174,8 @@ static ServiceProvider BuildProvider()
     var cfg = new ConfigurationBuilder()
         .AddEnvironmentVariables()
         .Build();
+    // IConfiguration должна быть доступна DI (AuthService и др. резолвят её из контейнера)
+    sc.AddSingleton<IConfiguration>(cfg);
     sc.AddAkasha(cfg, portable: true);
     return sc.BuildServiceProvider();
 }
