@@ -1,12 +1,23 @@
+# Build artifacts
 bin/
 obj/
+*.user
+*.suo
+*.userprefs
+
+# Editors / OS
 .vscode/
 .idea/
 *.swp
 *.swo
-*.user
-*.suo
-*.userprefs
 .DS_Store
 Thumbs.db
+
+# Databases (SQLite portable/test)
+*.db
+*.db-shm
+*.db-wal
 data/akasha.db
+
+# Local env & secrets
+.env
