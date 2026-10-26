@@ -54,7 +54,9 @@ public class CryptoTests
     {
         var key = SecretCrypto.DeriveKeyFromMasterKey("test-master-key");
         var payload = SecretCrypto.Encrypt("super-token-42", key);
-        Assert.DoesNotContain((byte)'t', payload[28..]); // ciphertext не должен быть читаемым текстом буквально — слабая проверка, но roundtrip важнее
+        // Шанс встретить конкретный байт в ~13-байтовом AES-GCM-шифртексте ≈ 5% —
+        // это flaky-проверка. Инвариант "шифртекст ≠ открытый текст" проверяем детерминированно:
+        Assert.NotEqual("super-token-42"u8.ToArray(), payload.Skip(payload.Length - "super-token-42".Length).ToArray());
         Assert.Equal("super-token-42", SecretCrypto.Decrypt(payload, key));
     }
 
