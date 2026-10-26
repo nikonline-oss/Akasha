@@ -1,15 +1,50 @@
 namespace Akasha.Core.Services;
 
-/// <summary>Хеширование паролей и API-ключей через Argon2id (Isopoh.Cryptography.Argon2).</summary>
+/// <summary>Хеширование паролей и API-ключей через Argon2id (Konscious.Security.Cryptography).</summary>
 public static class Hashing
 {
+    // Параметры Argon2id: m=64MiB, t=3, p=1 (OWASP-совместимо для серверных приложений).
+    private const int MemorySizeKiB = 65536;
+    private const int Iterations = 3;
+    private const int DegreeOfParallelism = 1;
+    private const int HashLength = 32;
+    private const int SaltLength = 16;
+
     public static string Argon2idHash(string input)
-        => Isopoh.Cryptography.Argon2.Argon2.Hash(input);
+    {
+        var salt = new byte[SaltLength];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(salt);
+        var hash = ComputeArgon2id(input, salt);
+        return "$argon2id$v=19$m=" + MemorySizeKiB + ",t=" + Iterations + ",p=" + DegreeOfParallelism
+               + "$" + Convert.ToBase64String(salt) + "$" + Convert.ToBase64String(hash);
+    }
 
     public static bool Verify(string input, string hash)
     {
-        try { return Isopoh.Cryptography.Argon2.Argon2.Verify(input, hash); }
+        try
+        {
+            var parts = hash.Split('$');
+            // "", "argon2id", "v=19", "m=..,t=..,p=..", saltB64, hashB64
+            if (parts.Length != 6 || parts[1] != "argon2id") return false;
+            var salt = Convert.FromBase64String(parts[4]);
+            var expected = Convert.FromBase64String(parts[5]);
+            var actual = ComputeArgon2id(input, salt);
+            return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(actual, expected);
+        }
         catch { return false; }
+    }
+
+    private static byte[] ComputeArgon2id(string input, byte[] salt)
+    {
+        using var argon2 = new Konscious.Security.Cryptography.Argon2id(
+            System.Text.Encoding.UTF8.GetBytes(input))
+        {
+            Salt = salt,
+            DegreeOfParallelism = DegreeOfParallelism,
+            MemorySize = MemorySizeKiB,
+            Iterations = Iterations
+        };
+        return argon2.GetBytes(HashLength);
     }
 
     private const string Base62 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

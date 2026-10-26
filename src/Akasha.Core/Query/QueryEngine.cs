@@ -281,35 +281,89 @@ public class QueryEngine
 
     private static IQueryable<Entry> ApplyTags(IQueryable<Entry> iq, JsonElement cond, JsonElement p)
     {
+        // Tags хранится как одна строка с разделителем \u001F (ValueConverter).
+        // Точное совпадение элемента списка — через LIKE по параметризованному шаблону
+        // "%\u001F<tag>\u001F%" (значения идут параметрами SQL, инъекции исключены).
         if (cond.ValueKind == JsonValueKind.String)
         {
             var t = ResolveScalar(cond, p);
-            return t is null ? iq : iq.Where(e => e.Tags.Contains(t));
+            return t is null ? iq : iq.Where(TagPredicate(t));
         }
         if (cond.ValueKind == JsonValueKind.Object)
         {
             foreach (var op in cond.EnumerateObject())
             {
                 var vals = op.Value.ValueKind == JsonValueKind.Array
-                    ? op.Value.EnumerateArray().Select(x => x.GetString()!).Where(s => s is not null).ToList()
+                    ? op.Value.EnumerateArray().Select(x => x.GetString()!).Where(s => !string.IsNullOrEmpty(s)).ToList()
                     : new List<string> { op.Value.GetString()! };
                 switch (op.Name)
                 {
                     case "$contains":
-                        iq = iq.Where(e => e.Tags.Contains(vals[0]));
+                        iq = iq.Where(TagPredicate(vals[0]));
                         break;
                     case "$contains_any":
-                        iq = iq.Where(e => vals.Any(v => e.Tags.Contains(v)));
+                    {
+                        // OR по всем значениям: склеиваем предикаты динамически.
+                        var param = System.Linq.Expressions.Expression.Parameter(typeof(Entry), "e");
+                        System.Linq.Expressions.Expression? body = null;
+                        foreach (var v in vals)
+                        {
+                            var inner = TagPredicate(v);
+                            var inst = new Replacer(inner.Parameters[0], param).Visit(inner.Body);
+                            body = body is null ? inst : System.Linq.Expressions.Expression.OrElse(body, inst);
+                        }
+                        if (body is not null)
+                            iq = iq.Where(System.Linq.Expressions.Expression.Lambda<Func<Entry, bool>>(body, param));
                         break;
+                    }
                     case "$contains_all":
-                        iq = iq.Where(e => vals.All(v => e.Tags.Contains(v)));
+                    {
+                        foreach (var v in vals)
+                            iq = iq.Where(TagPredicate(v));
                         break;
+                    }
                     default:
                         throw new QueryException($"Unknown tags operator: '{op.Name}'");
                 }
             }
         }
         return iq;
+    }
+
+    // ─── helpers для тегов (LIKE по сериализованному списку) ────────────────
+    internal const char TagSep = '\u001F';
+
+    /// <summary>
+    /// Предикат «запись содержит тег»: сравнивает сериализованный список тегов
+    /// (sep + tags + sep) с LIKE-шаблоном %sep+tag+sep%. EF переводит string.Concat
+    /// в SQL ||, а Like — в LIKE с параметром, поэтому запрос остаётся параметризованным.
+    /// </summary>
+    private static System.Linq.Expressions.Expression<Func<Entry, bool>> TagPredicate(string tag)
+    {
+        var sepStr = TagSep.ToString();
+        var pattern = $"%{sepStr}{tag}{sepStr}%";
+        return e => EF.Functions.Like(sepStr + string.Join(sepStr, e.Tags) + sepStr, pattern);
+    }
+
+    private sealed class Replacer : System.Linq.Expressions.ExpressionVisitor
+    {
+        private readonly System.Linq.Expressions.ParameterExpression _from, _to;
+        public Replacer(System.Linq.Expressions.ParameterExpression from, System.Linq.Expressions.ParameterExpression to) { _from = from; _to = to; }
+        protected override System.Linq.Expressions.Expression VisitParameter(System.Linq.Expressions.ParameterExpression node)
+            => node == _from ? _to : base.VisitParameter(node);
+    }
+
+    /// <summary>
+    /// Публичный хелпер: LIKE-паттерн точного совпадения тега в сериализованном списке (\u001F-разделитель).
+    /// Используется QueryEngine и SearchService.
+    /// </summary>
+    internal static string TagLikePattern(string tag) => $"%{TagSep}{tag}{TagSep}%";
+
+    /// <summary>LIKE-предикат по тегу через конкатенацию (EF переводит || в SQL).</summary>
+    internal static System.Linq.Expressions.Expression<Func<Entry, bool>> BuildTagPredicate(string tag)
+    {
+        var pattern = TagLikePattern(tag);
+        return e => EF.Functions.Like(e.TagsRaw, pattern);
     }
 
     private static IQueryable<Entry> ApplyDateCompare(IQueryable<Entry> iq, JsonElement cond,
