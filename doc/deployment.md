@@ -81,7 +81,26 @@ dotnet publish src/Akasha.Server -c Release -r osx-arm64 --self-contained -o dis
 | `AKASHA_OWNER_EMAIL` / `AKASHA_OWNER_PASSWORD` | server | bootstrap владельца (Argon2id при первом старте) |
 | `AKASHA_MASTER_KEY` | оба | AES-GCM ключ секретов (base64 32B). **Без него секреты недоступны** |
 | `AKASHA_URLS` | оба | bind address (portable жёстко 127.0.0.1) |
+| `AKASHA_PORT` | docker-compose | порт веб-интерфейса (внутри контейнера и на хосте), default `8080` |
+| `AKASHA_HOST` | docker-compose | адрес хоста для проброса порта: `127.0.0.1` (только reverse-proxy, default) или `0.0.0.0` |
 | `AKASHA_TELEGRAM_TOKEN` / `AKASHA_TELEGRAM_CHAT_ID` | server | бот-аппрувы |
+
+## 3.1 Настройка портов (docker-compose)
+
+Порт задаётся в `.env`, менять `docker-compose.yml` не нужно:
+
+```bash
+# .env
+AKASHA_PORT=9090          # если 8080 занят другим сервисом
+AKASHA_HOST=127.0.0.1     # default; 0.0.0.0 — открывать напрямую без reverse-proxy
+```
+
+Применить: `docker compose up -d` (пересоздастся только контейнер akasha).
+
+Проверить, кто занял порт на хосте: `ss -ltnp | grep 8080`.
+
+Если Akasha должна быть доступна напрямую по IP VPS (без домена/Caddy):
+`AKASHA_HOST=0.0.0.0 AKASHA_PORT=9090` → `http://ВАШ_IP:9090` (не забудьте пароль владельца понадежнее и фаервол: `ufw allow 9090/tcp`).
 
 ## 4. Backup & restore
 
