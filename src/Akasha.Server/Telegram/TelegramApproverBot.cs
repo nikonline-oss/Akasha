@@ -80,7 +80,7 @@ public class TelegramApproverBot : BackgroundService
                     InlineKeyboardButton.WithCallbackData($"❌ Reject", $"rj:{p.Id}"),
                 }
             });
-            await _client.SendRequest(new SendMessage(chatId, text) { ReplyMarkup = kb }, ct);
+            await _client.SendRequest(new SendMessageRequest { ChatId = chatId, Text = text, ReplyMarkup = kb }, ct);
 
             var tracked = await db.Proposals.FirstOrDefaultAsync(x => x.Id == p.Id, ct);
             if (tracked is not null) { tracked.NotifiedAt = DateTimeOffset.UtcNow; await db.SaveChangesAsync(ct); }
