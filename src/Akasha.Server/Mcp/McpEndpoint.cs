@@ -23,7 +23,7 @@ public static class McpEndpoint
     private static async Task<IResult> HandleAsync(HttpContext ctx, McpService mcp, CancellationToken ct)
     {
         JsonElement req;
-        try { req = await JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ct); req = req.RootElement.Clone(); }
+        try { using var doc = await JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ct); req = doc.RootElement.Clone(); }
         catch (JsonException) { return RpcError(null, -32700, "parse error"); }
 
         var id = req.TryGetProperty("id", out var i) ? i.Clone() : default;

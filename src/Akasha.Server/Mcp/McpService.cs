@@ -49,7 +49,7 @@ public class McpService
 
     public static List<ToolDef> GetToolDefinitions()
     {
-        var o = JsonDocument.Parse;
+        Func<string, JsonElement> o = s => JsonDocument.Parse(s).RootElement.Clone();
         return new()
         {
             new("akasha_search", "Hybrid search (FTS + semantic) over the owner's vault. Returns ranked hits with snippets.",
@@ -167,9 +167,9 @@ public class McpService
             var target = isScript ? ProposalTarget.Scripts : Str("target");
             var payload = args.TryGetProperty("payload", out var pl) ? pl.Clone()
                 : throw new ArgumentException("'payload' is required");
-            Guid? targetId = args.TryGetProperty("target_id", out var tid) && Guid.TryParse(tid.GetString(), out var g) ? g : null;
-            int? baseVersion = args.TryGetProperty("base_version", out var bv) && bv.TryGetInt32(out var i) ? i : null;
-            var agentId = _caller.IsOwner ? null : _caller.Agent!.Id;
+            Guid? targetId = args.TryGetProperty("target_id", out var tid) && Guid.TryParse(tid.GetString(), out var g) ? g : (Guid?)null;
+            int? baseVersion = args.TryGetProperty("base_version", out var bv) && bv.TryGetInt32(out var i) ? i : (int?)null;
+            var agentId = _caller.IsOwner ? (Guid?)null : _caller.Agent!.Id;
             var p = await _proposals.CreateAsync(agentId, op, target, targetId, payload, baseVersion, ct);
             return new { id = p.Id, status = p.Status, preview_url = $"/proposals/{p.Id}" };
         }

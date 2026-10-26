@@ -3,7 +3,10 @@ using Akasha.Core.Models;
 using Akasha.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
+using Telegram.Bot.Extensions;
 using Telegram.Bot.Types;
+using Telegram.Bot.Requests;
+using Telegram.Bot.Polling;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
@@ -35,7 +38,7 @@ public class TelegramApproverBot : BackgroundService
         var chatId = _cfg["AKASHA_TG_CHAT_ID"] ?? Environment.GetEnvironmentVariable("AKASHA_TG_CHAT_ID");
         if (_client is null || string.IsNullOrEmpty(chatId)) return;
 
-        _client.StartReceiving(Handler, onError: _ => Task.CompletedTask, stoppingToken: stoppingToken);
+        _client.StartReceiving(Handler, (ITelegramBotClient _, Exception ex, CancellationToken __) => { Console.Error.WriteLine($"TG bot error: {ex.Message}"); return Task.CompletedTask; }, new ReceiverOptions(), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -77,7 +80,7 @@ public class TelegramApproverBot : BackgroundService
                     InlineKeyboardButton.WithCallbackData($"❌ Reject", $"rj:{p.Id}"),
                 }
             });
-            await _client.SendMessageAsync(chatId, text, replyMarkup: kb, cancellationToken: ct);
+            await _client.SendRequest(new SendMessage(chatId, text) { ReplyMarkup = kb }, ct);
 
             var tracked = await db.Proposals.FirstOrDefaultAsync(x => x.Id == p.Id, ct);
             if (tracked is not null) { tracked.NotifiedAt = DateTimeOffset.UtcNow; await db.SaveChangesAsync(ct); }
@@ -109,13 +112,13 @@ public class TelegramApproverBot : BackgroundService
                 var p = await proposals.RejectAsync(id, "rejected via Telegram", ct);
                 answer = $"Rejected ({p.Status})";
             }
-            await client.AnswerCallbackQueryAsync(update.CallbackQuery.Id, answer, cancellationToken: ct);
-            await client.EditMessageTextAsync(chatId, update.CallbackQuery.Message!.MessageId!,
+            await client.AnswerCallbackQuery(update.CallbackQuery.Id, answer, cancellationToken: ct);
+            await client.EditMessageText(chatId, update.CallbackQuery.Message!.MessageId!,
                 $"🔮 Proposal #{id:N} → {answer}", cancellationToken: ct);
         }
         catch (Exception ex)
         {
-            await client.AnswerCallbackQueryAsync(update.CallbackQuery.Id, $"Error: {ex.Message}", cancellationToken: ct);
+            await client.AnswerCallbackQuery(update.CallbackQuery.Id, $"Error: {ex.Message}", cancellationToken: ct);
         }
     }
 }
