@@ -63,8 +63,12 @@ public class ScriptService
         var dataVersion = await _meta.GetDataVersionAsync(ct);
         var cacheKey = BuildCacheKey(script.Id, script.Version, @params, dataVersion);
 
-        var cachedItem = await _db.ScriptCache.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.CacheKey == cacheKey && c.ExpiresAt > DateTimeOffset.UtcNow, ct);
+        // Ключ уникален — берём запись и проверяем срок годности в памяти
+        // (сравнения DateTimeOffset в LINQ-to-SQL провайдером SQLite не транслируются).
+        var cacheCandidate = await _db.ScriptCache.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.CacheKey == cacheKey, ct);
+        var cachedItem = cacheCandidate is not null && cacheCandidate.ExpiresAt > DateTimeOffset.UtcNow
+            ? cacheCandidate : null;
         if (cachedItem is not null)
         {
             return new ScriptRunResult(JsonDocument.Parse(cachedItem.ResultJson).RootElement.Clone(),
