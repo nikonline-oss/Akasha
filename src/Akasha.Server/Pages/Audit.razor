@@ -1,0 +1,48 @@
+@page "/audit"
+@inject AkashaDbContext Db
+
+<MudText Typo="Typo.h5" GutterBottom="true">Аудит</MudText>
+
+<MudGrid Spacing="3" Class="mb-4">
+    <MudItem xs="6" md="3">
+        <MudTextField @bind-Value="_actor" Label="Actor" Placeholder="owner / agent id" OnChange="Reload" Clearable="true" />
+    </MudItem>
+    <MudItem xs="6" md="3">
+        <MudTextField @bind-Value="_action" Label="Action" Placeholder="create|approve|reject|sync…" OnChange="Reload" Clearable="true" />
+    </MudItem>
+</MudGrid>
+
+<MudTable Items="_logs" Hover="true" Elevation="0" Dense="true">
+    <HeaderContent>
+        <MudTh>Когда</MudTh>
+        <MudTh>Actor</MudTh>
+        <MudTh>Действие</MudTh>
+        <MudTh>Target</MudTh>
+        <MudTh>ID</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.At.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</MudTd>
+        <MudTd><code>@Short(context.Actor)</code></MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small">@context.Action</MudChip></MudTd>
+        <MudTd>@context.Target</MudTd>
+        <MudTd>@(context.TargetId?.ToString()[..8] ?? "—")</MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<AuditLog> _logs = new();
+    private string? _actor, _action;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        var q = Db.AuditLog.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(_actor)) q = q.Where(a => a.Actor.Contains(_actor));
+        if (!string.IsNullOrWhiteSpace(_action)) q = q.Where(a => a.Action == _action);
+        _logs = await q.OrderByDescending(a => a.Id).Take(200).ToListAsync();
+    }
+
+    private static string Short(string actor) =>
+        actor.Length > 12 ? actor[..8] + "…" : actor;
+}

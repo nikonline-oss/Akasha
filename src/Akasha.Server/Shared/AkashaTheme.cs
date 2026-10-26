@@ -1,3 +1,5 @@
+using MudBlazor;
+
 namespace Akasha.Server.Shared;
 
 /// <summary>Фиолетово-золотая палитра бренда (§7.1 ТЗ).</summary>
@@ -18,6 +20,5 @@ public static class AkashaTheme
             Error = "#B3261E",
         },
         LayoutProperties = new LayoutProperties { DefaultBorderRadius = "10px" },
-        Typography = new Typography { H5 = new Typo { FontWeight = FontWeight.Bold } },
     };
 }

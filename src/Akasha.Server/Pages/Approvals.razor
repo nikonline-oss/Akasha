@@ -1,0 +1,143 @@
+@page "/approvals"
+@inject AkashaDbContext Db
+@inject ProposalService Proposals
+@inject DiffService Diffs
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" GutterBottom="true">Approvals</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_pending.Count == 0)
+{
+    <MudAlert Severity="Severity.Success">Нет ожидающих предложений 🎉</MudAlert>
+}
+else
+{
+    @foreach (var p in _pending)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <div class="d-flex justify-space-between align-center mb-2">
+                <div>
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@p.Op</MudChip>
+                    <MudChip T="string" Size="Size.Small">@p.Target@(p.TargetId is null ? "" : $" · {p.TargetId}")</MudChip>
+                    <MudText Typo="Typo.caption" Class="ml-2">
+                        от @(p.AgentId?.ToString()[..8] ?? "owner"), @p.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")
+                    </MudText>
+                </div>
+                <div class="d-flex gap-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Check"
+                               OnClick="@(() => Approve(p.Id))">Approve</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Close"
+                               OnClick="@(() => OpenReject(p))">Reject</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               StartIcon="@(_diffs.ContainsKey(p.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                               OnClick="@(() => ToggleDiff(p))">Diff</MudButton>
+                </div>
+            </div>
+
+            @if (_diffs.TryGetValue(p.Id, out var diff))
+            {
+                <MudText Typo="Typo.subtitle2">@diff.Title</MudText>
+                <MudText Typo="Typo.body2" Class="mb-2">@diff.Summary</MudText>
+                <div class="akasha-diff pa-2 rounded" style="background:#F4F1FA; font-family:monospace; font-size:0.85rem;">
+                    @foreach (var line in diff.Body)
+                    {
+                        <div style="@DiffStyle(line.Type)">@(line.Type == "add" ? "+ " : line.Type == "del" ? "- " : "  ")@line.Text</div>
+                    }
+                </div>
+            }
+        </MudPaper>
+    }
+}
+
+<MudDialog @bind-visible="_rejectOpen" Options="_dialogOpts">
+    <TitleContent>Reject proposal</TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_rejectComment" Label="Комментарий (обязателен)" Lines="3" Variant="Variant.Outlined" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _rejectOpen = false)">Отмена</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmReject">Reject</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading = true;
+    private List<Proposal> _pending = new();
+    private Dictionary<Guid, DiffService.ProposalDiff> _diffs = new();
+    private bool _rejectOpen;
+    private string _rejectComment = "";
+    private Guid _rejectId;
+    private MudBlazor.DialogOptions _dialogOpts = new() { CloseOnEscapeKey = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pending = await Db.Proposals
+            .Where(p => p.Status == ProposalStatus.Pending)
+            .OrderByDescending(p => p.CreatedAt)
+            .Take(50).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task ToggleDiff(Proposal p)
+    {
+        if (_diffs.ContainsKey(p.Id)) { _diffs.Remove(p.Id); return; }
+        _diffs[p.Id] = await Diffs.BuildAsync(p);
+        StateHasChanged();
+    }
+
+    private async Task Approve(Guid id)
+    {
+        try
+        {
+            await Proposals.ApproveAsync(id);
+            Snackbar.Add("Предложение применено", Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void OpenReject(Proposal p)
+    {
+        _rejectId = p.Id;
+        _rejectComment = "";
+        _rejectOpen = true;
+    }
+
+    private async Task ConfirmReject()
+    {
+        _rejectOpen = false;
+        if (string.IsNullOrWhiteSpace(_rejectComment))
+        {
+            Snackbar.Add("Комментарий обязателен", Severity.Warn);
+            return;
+        }
+        await Proposals.RejectAsync(_rejectId, _rejectComment);
+        Snackbar.Add("Предложение отклонено", Severity.Info);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _diffs.Clear();
+        _pending = await Db.Proposals
+            .Where(p => p.Status == ProposalStatus.Pending)
+            .OrderByDescending(p => p.CreatedAt).Take(50).ToListAsync();
+        StateHasChanged();
+    }
+
+    private static string DiffStyle(string type) => type switch
+    {
+        "add" => "color:#2E7D32; background:#E6F4E6;",
+        "del" => "color:#B3261E; background:#FBE9E7;",
+        _ => "color:#555;",
+    };
+}

@@ -1,0 +1,110 @@
+@page "/agents"
+@inject AkashaDbContext Db
+@inject IAuthService Auth
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" GutterBottom="true">Агенты</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Каждый агент (Claude Desktop, Cursor и т.п.) получает Bearer-ключ <code>ak_…</code>, который показывается
+    только один раз при создании. Скоупы: read / propose / scripts.
+</MudText>
+
+@if (_newKey is not null)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4">
+        <b>Сохраните ключ сейчас — он больше не будет показан:</b><br />
+        <code style="user-select:all;">@_newKey</code>
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _newKey = null)">Скрыть</MudButton>
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_name" Label="Имя агента" Placeholder="claude-desktop" />
+        </MudItem>
+        <MudItem xs="12" sm="5">
+            <MudCheckBox T="bool" @bind-Value="_scopeRead" Label="read" Dense="true" Style="display:inline-block" />
+            <MudCheckBox T="bool" @bind-Value="_scopePropose" Label="propose" Dense="true" Style="display:inline-block" />
+            <MudCheckBox T="bool" @bind-Value="_scopeScripts" Label="scripts" Dense="true" Style="display:inline-block" />
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="CreateAgent">
+                Создать агента
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable Items="_agents" Hover="true" Elevation="0">
+    <HeaderContent>
+        <MudTh>Имя</MudTh>
+        <MudTh>Ключ</MudTh>
+        <MudTh>Скоупы</MudTh>
+        <MudTh>Последнее использование</MudTh>
+        <MudTh>Статус</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Имя">@context.Name</MudTd>
+        <MudTd DataLabel="Ключ"><code>@context.KeyPrefix…</code></MudTd>
+        <MudTd DataLabel="Скоупы">
+            @foreach (var sc in context.Scopes)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@sc</MudChip>
+            }
+        </MudTd>
+        <MudTd DataLabel="Last used">
+            @(context.LastUsedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—")
+        </MudTd>
+        <MudTd DataLabel="Статус">
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Error)">
+                @(context.IsActive ? "active" : "revoked")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            @if (context.IsActive)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                           OnClick="@(() => Revoke(context.Id))">Revoke</MudButton>
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<Agent> _agents = new();
+    private string _name = "";
+    private bool _scopeRead = true, _scopePropose = true, _scopeScripts = false;
+    private string? _newKey;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _agents = await Db.Agents.AsNoTracking().OrderByDescending(a => a.CreatedAt).ToListAsync();
+    }
+
+    private async Task CreateAgent()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) return;
+        var scopes = new List<string>();
+        if (_scopeRead) scopes.Add(Scopes.Read);
+        if (_scopePropose) scopes.Add(Scopes.Propose);
+        if (_scopeScripts) scopes.Add(Scopes.Scripts);
+        if (scopes.Count == 0) { Snackbar.Add("Выберите хотя бы один скоуп", Severity.Warn); return; }
+
+        var (plaintext, agent) = await Auth.CreateAgentAsync(_name, null, scopes);
+        _newKey = plaintext;
+        _name = "";
+        await Reload();
+        Snackbar.Add($"Агент «{agent.Name}» создан", Severity.Success);
+    }
+
+    private async Task Revoke(Guid id)
+    {
+        await Auth.RevokeAgentAsync(id);
+        await Reload();
+        Snackbar.Add("Ключ отозван", Severity.Info);
+    }
+}

@@ -1,0 +1,130 @@
+@page "/entries"
+@page "/entries/{Id:guid}"
+@inject AkashaDbContext Db
+@inject RecordsService Records
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" GutterBottom="true">@(IsNew ? "Новая запись" : "Запись")</MudText>
+
+@if (!_loading)
+{
+    <MudPaper Class="pa-4" MaxWidth="Large">
+        <MudGrid Spacing="3">
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_title" Label="Заголовок" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="string" @bind-Value="_kind" Label="Тип" Variant="Variant.Outlined">
+                    @foreach (var k in EntryKinds.All)
+                    {
+                        <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="string?" @bind-Value="_projectId" Label="Проект" Variant="Variant.Outlined" Clearable="true">
+                    @foreach (var p in _projects)
+                    {
+                        <MudSelectItem T="string?" Value="@p.Id.ToString()">@p.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_tags" Label="Теги (через запятую)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_body" Label="Тело (Markdown)" Lines="12" Variant="Variant.Outlined"
+                              Adornment="Adornment.None" FontFamily="monospace" />
+            </MudItem>
+            <MudItem xs="12" Class="d-flex gap-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Сохранить</MudButton>
+                @if (!IsNew)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Delete">Удалить</MudButton>
+                }
+                <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/"))">Отмена</MudButton>
+            </MudItem>
+        </MudGrid>
+        @if (!IsNew && _entry != null)
+        {
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.caption">
+                v@_entry.Version · создана @_entry.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ·
+                автор @_entry.CreatedBy
+            </MudText>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    private bool IsNew => Id is null || Id == Guid.Empty;
+
+    private bool _loading = true;
+    private Entry? _entry;
+    private List<Project> _projects = new();
+    private string _title = "", _kind = EntryKinds.Note, _body = "", _tags = "";
+    private string? _projectId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _projects = await Db.Projects.Where(p => p.DeletedAt == null).ToListAsync();
+        if (!IsNew)
+        {
+            _entry = await Db.Entries.FirstOrDefaultAsync(e => e.Id == Id && e.DeletedAt == null);
+            if (_entry is not null)
+            {
+                _title = _entry.Title;
+                _kind = _entry.Kind;
+                _body = _entry.Body;
+                _tags = string.Join(", ", _entry.Tags);
+                _projectId = _entry.ProjectId?.ToString();
+            }
+        }
+        _loading = false;
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            Snackbar.Add("Заголовок обязателен", Severity.Warn);
+            return;
+        }
+        var payload = BuildPayload();
+        if (IsNew)
+        {
+            var e = await Records.CreateEntryAsync(payload, "owner");
+            Snackbar.Add("Запись создана", Severity.Success);
+            Nav.NavigateTo($"/entries/{e.Id}");
+        }
+        else
+        {
+            await Records.UpdateEntryAsync(Id!, payload, "owner");
+            Snackbar.Add("Запись сохранена", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
+    private System.Text.Json.JsonElement BuildPayload()
+    {
+        var dict = new Dictionary<string, object?>
+        {
+            ["kind"] = _kind,
+            ["title"] = _title,
+            ["body"] = _body,
+            ["tags"] = _tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        };
+        if (!string.IsNullOrEmpty(_projectId)) dict["project_id"] = _projectId;
+        return System.Text.Json.JsonSerializer.SerializeToElement(dict);
+    }
+
+    private async Task Delete()
+    {
+        if (Id is null) return;
+        await Records.DeleteEntryAsync(Id, "owner");
+        Snackbar.Add("Запись удалена", Severity.Info);
+        Nav.NavigateTo("/");
+    }
+}

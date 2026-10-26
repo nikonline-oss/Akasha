@@ -1,0 +1,86 @@
+@page "/projects"
+@inject AkashaDbContext Db
+@inject RecordsService Records
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" GutterBottom="true">Проекты</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-4"
+           StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _createOpen = true)">Новый проект</MudButton>
+
+<MudGrid Spacing="3">
+    @foreach (var p in _projects)
+    {
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <MudText Typo="Typo.subtitle1">@p.Name</MudText>
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(p.Status == ProjectStatus.Active ? Color.Success : Color.Default)">@p.Status</MudChip>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@p.Slug</MudText>
+                @if (!string.IsNullOrEmpty(p.Description))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2">@p.Description</MudText>
+                }
+                @if (p.Stack.Count > 0)
+                {
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        @foreach (var s in p.Stack)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@s</MudChip>
+                        }
+                    </div>
+                }
+                <div class="mt-3">
+                    <MudLink Href="@($"/entries?project={p.Slug}")" Underline="Underline.None">
+                        Записи проекта →
+                    </MudLink>
+                </div>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+<MudDialog @bind-visible="_createOpen">
+    <TitleContent>Новый проект</TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Название" Class="mb-2" />
+        <MudTextField @bind-Value="_description" Label="Описание" Lines="2" />
+        <MudTextField @bind-Value="_stack" Label="Стек (через запятую)" Class="mt-2" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _createOpen = false)">Отмена</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">Создать</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Project> _projects = new();
+    private bool _createOpen;
+    private string _name = "", _description = "", _stack = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _projects = await Db.Projects.Where(p => p.DeletedAt == null)
+            .OrderBy(p => p.Name).ToListAsync();
+    }
+
+    private async Task Create()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) return;
+        try
+        {
+            var stack = _stack.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            await Records.CreateProjectAsync(_name, _description, null, stack, "owner");
+            _createOpen = false;
+            _name = _description = _stack = "";
+            _projects = await Db.Projects.Where(p => p.DeletedAt == null).OrderBy(p => p.Name).ToListAsync();
+            Snackbar.Add("Проект создан", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}
