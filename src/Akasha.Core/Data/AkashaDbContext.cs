@@ -31,6 +31,24 @@ public class AkashaDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // ─── DateTimeOffset: на SQLite храним как long (unix ms UTC) — иначе ORDER BY/сравнения не поддерживаются провайдером ──
+        if (IsSqlite)
+        {
+            var dtoConv = new ValueConverter<DateTimeOffset, long>(
+                d => d.ToUnixTimeMilliseconds(),
+                l => DateTimeOffset.FromUnixTimeMilliseconds(l));
+            var dtoNullableConv = new ValueConverter<DateTimeOffset?, long?>(
+                d => d == null ? null : d.Value.ToUnixTimeMilliseconds(),
+                l => l == null ? null : DateTimeOffset.FromUnixTimeMilliseconds(l.Value));
+
+            foreach (var entityType in b.Model.GetEntityTypes())
+                foreach (var prop in entityType.GetProperties())
+                {
+                    if (prop.ClrType == typeof(DateTimeOffset)) prop.SetValueConverter(dtoConv);
+                    else if (prop.ClrType == typeof(DateTimeOffset?)) prop.SetValueConverter(dtoNullableConv);
+                }
+        }
+
         // ─── Общие конвертеры для JSON/массивов на SQLite ─────────────────────
         var jsonConv = new ValueConverter<JsonElement, string>(
             j => j.ValueKind == JsonValueKind.Undefined ? null! : j.GetRawText(),
@@ -83,6 +101,8 @@ public class AkashaDbContext : DbContext
             e.ToTable("entries");
             e.HasIndex(x => new { x.ProjectId, x.Kind, x.UpdatedAt });
             e.Property(x => x.Tags).HasConversion(strListConv).Metadata.SetValueComparer(strListCmp);
+            // Те же данные в «сыром» виде — для переводимых LIKE-фильтров по тегам.
+            e.Property(x => x.TagsRaw).HasColumnName("tags").HasColumnType("TEXT");
             e.Property(x => x.Metadata).HasConversion(jsonNullableConv);
             e.Property(x => x.Embedding).HasConversion(embConv).Metadata.SetValueComparer(embCmp);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId);

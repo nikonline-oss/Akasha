@@ -12,6 +12,11 @@ public class Entry
     public string Title { get; set; } = "";
     public string Body { get; set; } = "";             // Markdown
     public List<string> Tags { get; set; } = new();
+    /// <summary>
+    /// Сырое сериализованное представление Tags (разделитель \u001F) — EF-маппинг на ту же колонку,
+    /// чтобы LIKE-фильтры по тегам переводились в SQL. Не использовать в бизнес-логике.
+    /// </summary>
+    internal string? TagsRaw { get; set; }
     public string? SourceUrl { get; set; }
     public JsonElement? Metadata { get; set; }
     /// <summary>Embedding BGE-Micro-V2 (384 dim). Провайдер БД отображает в vector (PG) / TEXT (SQLite).</summary>
