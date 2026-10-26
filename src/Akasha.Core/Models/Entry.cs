@@ -13,8 +13,10 @@ public class Entry
     public string Body { get; set; } = "";             // Markdown
     public List<string> Tags { get; set; } = new();
     /// <summary>
-    /// Сырое сериализованное представление Tags (разделитель \u001F) — EF-маппинг на ту же колонку,
-    /// чтобы LIKE-фильтры по тегам переводились в SQL. Не использовать в бизнес-логике.
+    /// Тень свойства Tags: та же колонка `tags` в «сыром» виде (после ValueConverter,
+    /// разделитель \u001F). Нужна для переводимых LIKE-фильтров по тегам.
+    /// Значение поддерживается синхронно в AkashaDbContext.SaveChanges*.
+    /// В бизнес-логике не использовать.
     /// </summary>
     internal string? TagsRaw { get; set; }
     public string? SourceUrl { get; set; }
