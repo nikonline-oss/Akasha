@@ -35,7 +35,7 @@
             </MudItem>
             <MudItem xs="12">
                 <MudTextField @bind-Value="_body" Label="Тело (Markdown)" Lines="12" Variant="Variant.Outlined"
-                              Adornment="Adornment.None" FontFamily="monospace" />
+                              Adornment="Adornment.None" Style="font-family: monospace;" />
             </MudItem>
             <MudItem xs="12" Class="d-flex gap-2">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Сохранить</MudButton>
@@ -101,7 +101,7 @@
         }
         else
         {
-            await Records.UpdateEntryAsync(Id.Value, payload, "owner");
+            if (Id.HasValue) await Records.UpdateEntryAsync(Id.Value, payload, "owner");
             Snackbar.Add("Запись сохранена", Severity.Success);
             StateHasChanged();
         }

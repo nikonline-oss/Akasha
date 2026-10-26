@@ -5,10 +5,10 @@
 
 <MudGrid Spacing="3" Class="mb-4">
     <MudItem xs="6" md="3">
-        <MudTextField @bind-Value="_actor" Label="Actor" Placeholder="owner / agent id" OnChange="Reload" Clearable="true" />
+        <MudTextField T="string" Value="_actor" ValueChanged="async v => { _actor = v; await Reload(); }" DebounceInterval="400" Label="Actor" Placeholder="owner / agent id" Clearable="true" />
     </MudItem>
     <MudItem xs="6" md="3">
-        <MudTextField @bind-Value="_action" Label="Action" Placeholder="create|approve|reject|sync…" OnChange="Reload" Clearable="true" />
+        <MudTextField T="string" Value="_action" ValueChanged="async v => { _action = v; await Reload(); }" DebounceInterval="400" Label="Action" Placeholder="create|approve|reject|sync…" Clearable="true" />
     </MudItem>
 </MudGrid>
 
