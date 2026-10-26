@@ -34,6 +34,20 @@ public class QueryEngine
     /// <summary>Возвращает JSON Schema формата structured query + примеры (для MCP akasha_query_schema).</summary>
     public static string GetSchemaJson() => SchemaProvider.SchemaJson;
 
+    /// <summary>Проверка формы query без выполнения (для валидации скриптов при сохранении).</summary>
+    public void ValidateQueryShape(JsonElement queryEl)
+    {
+        if (queryEl.ValueKind != JsonValueKind.Object)
+            throw new QueryException("Query must be a JSON object.");
+        var from = queryEl.TryGetProperty("from", out var f) ? f.GetString() : null;
+        if (from is null || !AllowedTables.Contains(from))
+            throw new QueryException($"'from' must be one of: {string.Join(", ", AllowedTables)}");
+        if (queryEl.TryGetProperty("select", out var sel) && sel.ValueKind != JsonValueKind.Array)
+            throw new QueryException("'select' must be an array of field names.");
+        if (queryEl.TryGetProperty("where", out var w) && w.ValueKind != JsonValueKind.Array && w.ValueKind != JsonValueKind.Object)
+            throw new QueryException("'where' must be an object or array.");
+    }
+
     public async Task<QueryResult> ExecuteAsync(AkashaDbContext db, JsonElement queryEl,
         JsonElement? parameters, CancellationToken ct = default)
     {
