@@ -251,11 +251,15 @@ public static class ApiEndpoints
         if (req.Mode is not ("hybrid" or "fts" or "vector"))
             return Err(422, "validation", "mode must be hybrid|fts|vector");
 
-        var hits = await search.SearchAsync(req.Query, req.Project, req.Kind, req.Tags, req.Mode,
-            Math.Clamp(req.Limit, 1, 100), ct);
-        return Results.Json(new ApiTypes.SearchResponse(
-            hits.Select(h => new ApiTypes.SearchHit(h.Id, h.Title, h.Snippet, h.Score, h.Kind, h.ProjectSlug)).ToList()),
-            JsonOpts);
+        try
+        {
+            var hits = await search.SearchAsync(req.Query, req.Project, req.Kind, req.Tags, req.Mode,
+                Math.Clamp(req.Limit, 1, 100), ct);
+            return Results.Json(new ApiTypes.SearchResponse(
+                hits.Select(h => new ApiTypes.SearchHit(h.Id, h.Title, h.Snippet, h.Score, h.Kind, h.ProjectSlug)).ToList()),
+                JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
     }
 
     // ═══ query & proposals ═══════════════════════════════════════════════════

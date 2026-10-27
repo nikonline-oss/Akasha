@@ -5,6 +5,7 @@ using Akasha.Server.Api;
 using Akasha.Server.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 
@@ -72,15 +73,25 @@ public static class ServiceCollectionExtensions
 
         var cs = useSqlite && !conn.Contains('=') ? $"Data Source={conn}" : conn;
 
+        // Npgsql data source с зарегистрированным типом vector. Нужен на уровне ADO.NET:
+        // без него параметры Vector уходят как text, и Postgres отвергает оператор <=> (500).
+        NpgsqlDataSource? pgDataSource = null;
+        if (!useSqlite)
+        {
+            var dsb = new NpgsqlDataSourceBuilder(cs);
+            dsb.UseVector();
+            pgDataSource = dsb.Build();
+        }
+
         services.AddScoped<AkashaDbContext>(sp =>
         {
             var opts = new DbContextOptionsBuilder<AkashaDbContext>();
             if (useSqlite) opts.UseSqlite(cs);
-            else opts.UseNpgsql(cs, o => o.UseVector());
+            else opts.UseNpgsql(pgDataSource!, o => o.UseVector());
             return new AkashaDbContext(opts.Options);
         });
 
-        services.AddSingleton<IDbContextFactoryLike>(new DbContextFactory(cs, useSqlite));
+        services.AddSingleton<IDbContextFactoryLike>(new DbContextFactory(cs, useSqlite, pgDataSource));
         // portable-режим включает localhost-owner в AuthMiddleware (актуально и для Akasha.Portable host'а)
         if (portable)
             services.AddSingleton(new AuthMiddlewareOptions(true));

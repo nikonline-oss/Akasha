@@ -1,5 +1,6 @@
 @page "/search"
 @inject SearchService SearchSvc
+@inject ISnackbar Snackbar
 
 <MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.search")</MudText>
 
@@ -58,7 +59,16 @@
     private async Task Run()
     {
         if (string.IsNullOrWhiteSpace(_query)) return;
-        _hits = await SearchSvc.SearchAsync(_query, kind: _kind);
+        try
+        {
+            _hits = await SearchSvc.SearchAsync(_query, kind: _kind);
+        }
+        catch (Exception ex)
+        {
+            // не даём исключению убить Blazor-контур
+            _hits = new();
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
         _searched = true;
     }
 
