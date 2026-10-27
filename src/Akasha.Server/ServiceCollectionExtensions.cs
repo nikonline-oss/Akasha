@@ -81,6 +81,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<EmbeddingQueue>();
         services.AddSingleton<QueryEngine>();
         services.AddSingleton<RateLimiter>();
+        services.AddSingleton<SyncClient>();
 
         services.AddScoped<AuditService>();
         services.AddScoped<MetaService>();

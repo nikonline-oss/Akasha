@@ -84,50 +84,17 @@ async Task ServeAsync(bool portableOnly)
     await app.RunAsync();
 }
 
-// ═══ sync — однократный цикл pull+push с сервером ═══════════════════════════
+// ═══ sync — однократный цикл pull+push с сервером (общая логика — в SyncClient) ═
 async Task SyncOnceAsync()
 {
-    var server = Environment.GetEnvironmentVariable("AKASHA_SERVER_URL")
-                 ?? throw new InvalidOperationException("Set AKASHA_SERVER_URL (e.g. https://akasha.example.com)");
-    var key = Environment.GetEnvironmentVariable("AKASHA_DEVICE_KEY")
-              ?? throw new InvalidOperationException("Set AKASHA_DEVICE_KEY (agent key with sync scope)");
-    var deviceId = Environment.GetEnvironmentVariable("AKASHA_DEVICE_ID") ?? Environment.MachineName;
-
     using var scope = BuildProvider().CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AkashaDbContext>();
     await db.Database.EnsureCreatedAsync();
     var svc = scope.ServiceProvider.GetRequiredService<SyncService>();
+    var client = scope.ServiceProvider.GetRequiredService<SyncClient>();
 
-    using var http = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + "/api") };
-    http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
-
-    // 1) pull изменений с сервера с момента последней синхронизации
-    var since = GetLastSync(Path.Combine(dataDir, "sync-state.json"));
-    var pullUrl = $"sync/pull{(since is null ? "" : "?since=" + Uri.EscapeDataString(since.Value.ToString("O")))}";
-    var pulled = await http.GetFromJsonAsync<List<SyncChangeDto>>(pullUrl) ?? new();
-    int appliedPull = 0;
-    if (pulled.Count > 0)
-    {
-        var changes = pulled.Select(c => new SyncService.SyncChange(
-            c.Entity, c.Op, JsonSerializer.Deserialize<JsonElement>(c.Data.GetRawText()), c.UpdatedAt)).ToList();
-        appliedPull = await svc.ApplyPulledChangesAsync(changes);
-    }
-
-    // 2) push локальных изменений
-    var local = await svc.PullAsync(since ?? DateTimeOffset.UnixEpoch);
-    var dtoLocal = local.Select(c => new SyncChangeDto(c.Entity, c.Op, c.Data, c.UpdatedAt)).ToList();
-    int appliedPush = 0, skipped = 0;
-    List<Guid> conflicts = new();
-    if (dtoLocal.Count > 0)
-    {
-        var resp = await http.PostAsJsonAsync("sync/push", new { deviceId = deviceId, changes = dtoLocal });
-        resp.EnsureSuccessStatusCode();
-        var res = await resp.Content.ReadFromJsonAsync<PushResponse>();
-        appliedPush = res?.Applied ?? 0; skipped = res?.SkippedOlder ?? 0; conflicts = res?.ConflictProposals ?? new();
-    }
-
-    SetLastSync(Path.Combine(dataDir, "sync-state.json"), DateTimeOffset.UtcNow);
-    Console.WriteLine($"[akasha] sync done: pulled={appliedPull}, pushed={appliedPush}, skipped={skipped}, conflicts={conflicts.Count}");
+    var res = await client.SyncAsync(svc);
+    Console.WriteLine($"[akasha] sync done: pulled={res.Pulled}, pushed={res.Pushed}, skipped={res.SkippedOlder}, conflicts={res.Conflicts}");
 }
 
 // ═══ export / import ════════════════════════════════════════════════════════
@@ -208,23 +175,9 @@ static ServiceProvider BuildProvider()
     // IConfiguration должна быть доступна DI (AuthService и др. резолвят её из контейнера)
     sc.AddSingleton<IConfiguration>(cfg);
     sc.AddAkasha(cfg, portable: true);
+    sc.AddHttpClient();
     return sc.BuildServiceProvider();
 }
-
-static DateTimeOffset? GetLastSync(string path)
-{
-    if (!File.Exists(path)) return null;
-    try
-    {
-        using var d = JsonDocument.Parse(File.ReadAllText(path));
-        if (d.RootElement.TryGetProperty("last_sync", out var v) && v.TryGetDateTimeOffset(out var dt)) return dt;
-    }
-    catch { }
-    return null;
-}
-
-static void SetLastSync(string path, DateTimeOffset dt)
-    => File.WriteAllText(path, JsonSerializer.Serialize(new { last_sync = dt }));
 
 void PrintHelp()
 {
@@ -244,7 +197,3 @@ void PrintHelp()
              AKASHA_OWNER_EMAIL, AKASHA_OWNER_PASSWORD
         """);
 }
-
-// ─── DTO для sync-клиента ────────────────────────────────────────────────────
-record SyncChangeDto(string Entity, string Op, JsonElement Data, DateTimeOffset UpdatedAt);
-record PushResponse(int Applied, int SkippedOlder, List<Guid> ConflictProposals);
