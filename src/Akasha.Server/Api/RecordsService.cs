@@ -83,9 +83,10 @@ public class RecordsService
         var e = MapEntry(payload, new Entry());
         e.CreatedBy = actor;
         _db.Entries.Add(e);
-        EnqueueEmbedding(e.Id);
         await BumpDataVersion(ct);
         await _db.SaveChangesAsync(ct);
+        // enqueue ПОСЛЕ коммита: worker читает запись из БД, иначе видит null и пропускает.
+        EnqueueEmbedding(e.Id);
         await _audit.LogAsync(actor, "create", "entries", e.Id, null, ct);
         return e;
     }
@@ -98,9 +99,10 @@ public class RecordsService
         MapEntry(patch, e);
         e.Version++;
         e.UpdatedAt = DateTimeOffset.UtcNow;
-        EnqueueEmbedding(e.Id);
         await BumpDataVersion(ct);
         await _db.SaveChangesAsync(ct);
+        // enqueue ПОСЛЕ коммита, чтобы worker увидел новое содержимое.
+        EnqueueEmbedding(e.Id);
         await _audit.LogAsync(actor, "update", "entries", e.Id,
             JsonSerializer.Serialize(new { before, after = e.Body }), ct);
         return e;
