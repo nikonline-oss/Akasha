@@ -77,7 +77,10 @@ async Task ServeAsync(bool portableOnly)
     app.MapFallbackToPage("/_Host");
 
     await Akasha.Server.ServiceCollectionExtensions.PrepareDatabaseAsync(app.Services);
-    Console.WriteLine($"[akasha] portable UI: http://127.0.0.1:{port} (SQLite: {sqlitePath})");
+    var url = $"http://127.0.0.1:{port}";
+    Console.WriteLine($"[akasha] portable UI: {url} (SQLite: {sqlitePath})");
+    // Открываем браузер сразу после того, как Kestrel начал слушать.
+    app.Lifetime.ApplicationStarted.Register(() => OpenBrowser(url));
     await app.RunAsync();
 }
 
@@ -175,6 +178,24 @@ static string? GetOptionValue(string[] args, string name)
     for (var i = 0; i < args.Length - 1; i++)
         if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase)) return args[i + 1];
     return null;
+}
+
+/// <summary>Открывает URL в системном браузере (best-effort: в headless/CI — тихо пропускаем).</summary>
+static void OpenBrowser(string url)
+{
+    try
+    {
+        if (OperatingSystem.IsWindows())
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd", $"/c start \"\" \"{url}\"") { CreateNoWindow = true });
+        else if (OperatingSystem.IsMacOS())
+            System.Diagnostics.Process.Start("open", url);
+        else
+            System.Diagnostics.Process.Start("xdg-open", url);
+    }
+    catch
+    {
+        // Браузер открыть не удалось — не критично.
+    }
 }
 
 static ServiceProvider BuildProvider()
