@@ -266,3 +266,21 @@ docker compose build && docker compose up -d
 | `AKASHA_TELEGRAM_BOT_TOKEN` / `AKASHA_TELEGRAM_CHAT_ID` | server | Telegram-бот аппрувов (устаревшие алиасы `AKASHA_TG_*`) |
 | `AKASHA_SERVER_URL` / `AKASHA_DEVICE_KEY` / `AKASHA_DEVICE_ID` | portable | параметры синхронизации (можно хранить в `data/sync-config.json` через UI) |
 | `ASPNETCORE_URLS` | server | адрес/порт прослушивания (в Docker уже задан `http://+:8080`) |
+| `AKASHA_ONNX_MODEL` | оба | путь к `bge-micro-v2.onnx` — включает ONNX-эмбеддинги (иначе hashed-ngram fallback) |
+| `AKASHA_ONNX_VOCAB` | оба | путь к `vocab.txt` (default: рядом с моделью) |
+| `AKASHA_ONNX_MAXLEN` | оба | длина последовательности для ONNX (default 256, диапазон 8–512) |
+
+### ONNX-эмбеддинги (опционально)
+
+По умолчанию используется детерминированный hashed-ngram fallback (работает офлайн без модели).
+Чтобы включить настоящую модель **BGE-Micro-V2** (384 dim):
+
+1. Скачай `bge-micro-v2.onnx` и `vocab.txt` (из модели `BAAI/bge-micro-v2`, ONNX-экспорт) в каталог `models/`.
+2. Задай:
+   ```bash
+   export AKASHA_ONNX_MODEL=/path/to/models/bge-micro-v2.onnx
+   export AKASHA_ONNX_VOCAB=/path/to/models/vocab.txt   # необязательно
+   ```
+3. Перезапусти приложение. Если модель не загрузилась (нет файла/несовместимый формат) — в лог
+   уйдёт предупреждение и приложение продолжит работать на hashed-ngram fallback.
+

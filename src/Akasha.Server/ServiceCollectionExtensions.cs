@@ -78,7 +78,27 @@ public static class ServiceCollectionExtensions
         // portable-режим включает localhost-owner в AuthMiddleware (актуально и для Akasha.Portable host'а)
         if (portable)
             services.AddSingleton(new AuthMiddlewareOptions(true));
-        services.AddSingleton<IEmbeddingService, HashedNgramEmbeddings>();
+        services.AddSingleton<IEmbeddingService>(sp =>
+        {
+            // ONNX/BGE-Micro-V2 — opt-in через AKASHA_ONNX_MODEL; иначе детерминированный fallback.
+            var model = cfg["AKASHA_ONNX_MODEL"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_MODEL");
+            if (string.IsNullOrWhiteSpace(model)) return new HashedNgramEmbeddings();
+
+            var vocab = cfg["AKASHA_ONNX_VOCAB"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_VOCAB")
+                        ?? Path.Combine(Path.GetDirectoryName(model) ?? ".", "vocab.txt");
+            var maxLenRaw = cfg["AKASHA_ONNX_MAXLEN"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_MAXLEN");
+            var maxLen = int.TryParse(maxLenRaw, out var ml) ? ml : 256;
+            try
+            {
+                return new OnnxEmbeddingService(model, vocab, maxLen);
+            }
+            catch (Exception ex)
+            {
+                sp.GetService<ILoggerFactory>()?.CreateLogger("Akasha.Embeddings")
+                    .LogWarning(ex, "ONNX-эмбеддинги не загрузились ({Model}); fallback на hashed-ngram.", model);
+                return new HashedNgramEmbeddings();
+            }
+        });
         services.AddSingleton<EmbeddingQueue>();
         services.AddSingleton<QueryEngine>();
         services.AddSingleton<RateLimiter>();
