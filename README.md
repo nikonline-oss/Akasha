@@ -2,8 +2,12 @@
 
 > **Akasha** — Personal Context Vault  
 > Короткое имя (CLI/бинарник): `akasha`  
-> Пакеты .NET: `Akasha.Core`, `Akasha.Server`, `Akasha.Portable`, `Akasha.Mcp`, `Akasha.Cli`, `Akasha.Tests`  
+> Пакеты .NET: `Akasha.Core`, `Akasha.Server`, `Akasha.Portable`, `Akasha.Tests`  
 > Палитра брендинга: фиолетовый + золотой (закладывается в UI-тему с самого начала)
+>
+> ⚠️ Этот документ — **ТЗ** (спецификация целей), местами опережает реализацию.
+> Актуальные гайды по установке, сборке portable, API и UI — в каталоге `doc/`:
+> [deployment.md](doc/deployment.md), [user-guide.md](doc/user-guide.md), [api.md](doc/api.md), [mcp-tools.md](doc/mcp-tools.md).
 
 ---
 
@@ -90,11 +94,13 @@
 
 ### 2.3. Режимы запуска
 
-- **`akasha serve`** — запускает server-версию (порт 5077 по умолчанию). В Docker — `docker compose up`.
-- **`akasha portable`** — запускает portable из текущей директории, ищет `akasha.db` рядом с бинарником. Открывает браузер на `http://localhost:5077`.
-- **`akasha sync`** — синхронизация portable ↔ server (pull + push).
-- **`akasha mcp`** — stdio MCP-сервер (для Claude Desktop / Cursor локально, без HTTP).
+- **`akasha serve`** / **`akasha portable`** — локальный сервер (UI + API + MCP) на SQLite; слушает
+  `http://127.0.0.1:5173` (порт меняется `--port N` / `AKASHA_PORT`), браузер открывается автоматически.
+  Server в Docker — `docker compose up` (порт `AKASHA_PORT`, по умолчанию 8080).
+- **`akasha sync`** — синхронизация portable ↔ server (pull + push); так же доступна из UI («Синхронизация»).
 - **`akasha export`** / **`akasha import`** — полный дамп/загрузка.
+- **`akasha agent-key`** — создать ключ агента локально.
+- (stdio-режим `akasha mcp` — в планах, пока не реализован; MCP — по HTTP `POST /mcp`.)
 
 ---
 
@@ -631,7 +637,7 @@ var theme = new MudTheme
 - **MVP-приоритет** (до готовности UI-апрувов).
 - Формат: «🆕 proposal от claude-desktop: create entry в foo» + inline-кнопки Approve/Reject.
 - Библиотека: `Telegram.Bot`.
-- Конфиг: `Telegram__BotToken`, `Telegram__OwnerChatId`.
+- Конфиг: `AKASHA_TELEGRAM_BOT_TOKEN`, `AKASHA_TELEGRAM_CHAT_ID` (см. [deployment.md](doc/deployment.md)).
 
 ---
 
@@ -647,7 +653,9 @@ query ──► [ FTS ] ──► rank_fts ─┐
 
 **RRF**: `score(d) = Σ 1 / (60 + rank_i(d))`
 
-**Embedding**: BGE-Micro-V2 (384 dim) через ONNX Runtime, CPU, ~5 мс/инференс. Background job (`IHostedService` + `Channel<Guid>`).
+**Embedding**: интерфейс `IEmbeddingService`; сейчас реализован детерминированный hashed-ngram fallback
+(384 dim, работает офлайн без модели). BGE-Micro-V2 через ONNX Runtime — планируется (см. §13). Фоновая
+генерация — `IHostedService` + `Channel<Guid>`.
 
 ### 8.2. Structured JSON Query — формат скриптов
 
@@ -976,15 +984,15 @@ dotnet publish Akasha.Portable -c Release -r osx-arm64 ...
 
 ### 10.3. Запуск
 
-**Windows**: `win/Akasha.Portable.exe`  
-**Linux/macOS**: `./linux/akasha` (или обёртка `start.sh`, определяющая ОС)
+**Windows**: `win\akasha.exe`  
+**Linux/macOS**: `./linux/akasha` (или `./osx-*/akasha`)
 
 Приложение:
-1. Читает `config.json`
-2. Открывает `akasha.db` (или создаёт схему)
-3. Если есть зашифрованные секреты → просит master-password
-4. Запускает Kestrel на `127.0.0.1:5077`
-5. Открывает браузер
+1. Определяет каталог данных `AKASHA_DATA_DIR` (по умолчанию `./data`).
+2. Открывает `data/akasha.db` (или создаёт схему).
+3. Ключ шифрования секретов: `AKASHA_MASTER_KEY` либо автосгенерированный `data/master.key`.
+4. Запускает Kestrel на `http://127.0.0.1:5173` (порт `--port N` / `AKASHA_PORT`).
+5. Открывает браузер автоматически.
 
 ### 10.4. Ограничения portable
 
@@ -1011,28 +1019,23 @@ dotnet publish Akasha.Portable -c Release -r osx-arm64 ...
 
 ## 11. Стек и зависимости
 
-### 11.1. .NET-пакеты
+### 11.1. .NET-пакеты (фактически используемые)
 
 | Пакет | Для чего |
 |---|---|
 | `Microsoft.EntityFrameworkCore` 9.x | ORM |
 | `Npgsql.EntityFrameworkCore.PostgreSQL` | Провайдер Postgres |
 | `Microsoft.EntityFrameworkCore.Sqlite` | Провайдер SQLite |
-| `Pgvector.EntityFrameworkCore` | Векторы в Postgres |
-| `Microsoft.Extensions.AI` | Абстракция LLM/embeddings |
-| `Microsoft.SemanticKernel` | Обвязка для embeddings |
-| `ModelContextProtocol.AspNetCore` | MCP-сервер (HTTP) |
-| `ModelContextProtocol` (stdio) | MCP для portable |
-| `FusionCache` | Двухуровневый кэш |
-| `Telegram.Bot` | Уведомления об апрувах |
+| `Konscious.Security.Cryptography.Argon2` | Argon2id (ключи агентов, пароль владельца) |
 | `JmesPath.Net` | JMESPath transform |
-| `NJsonSchema` | Валидация `params_schema` и `query` |
-| `Serilog` + `Serilog.Sinks.File` | Логи |
-| `FluentValidation` | Валидация DTO |
-| `Isopoh.Cryptography.Argon2` | Хеши ключей и паролей |
 | `MudBlazor` | UI-kit |
-| `Markdig` | Markdown рендер |
-| `xunit`, `FluentAssertions`, `Testcontainers` | Тесты |
+| `Telegram.Bot` | бот аппрувов |
+| `Markdig` | Markdown-рендер |
+| `xunit` (+ runner) | тесты |
+
+> Запланированные, но пока не подключённые пакеты (часть ТЗ): `Pgvector.EntityFrameworkCore`,
+> `Microsoft.Extensions.AI`/`SemanticKernel`, `ModelContextProtocol*`, `FusionCache`, `NJsonSchema`,
+> `Serilog`, `FluentValidation`, `Isopoh.Cryptography.Argon2`, `FluentAssertions`, `Testcontainers`.
 
 ### 11.2. Фронтовые библиотеки (JS interop)
 
@@ -1042,48 +1045,48 @@ dotnet publish Akasha.Portable -c Release -r osx-arm64 ...
 
 ### 11.3. Инфраструктура (server)
 
-- PostgreSQL 16 + `pgvector` + `pg_trgm`
-- Redis (опционально, для FusionCache)
+- PostgreSQL 16 + `pgvector` (образ `pgvector/pgvector:pg16`)
 - Docker + docker-compose
-- GitHub Actions — сборка portable под 4 таргета
+- (Redis/FusionCache, GitHub Actions — в планах, не подключены)
 
 ### 11.4. Docker
 
+Готовый `docker-compose.yml` и `.env.example` лежат в корне репозитория — используй их (подробности в
+[deployment.md](doc/deployment.md)). Кратко:
+
 ```yaml
+# docker-compose.yml (фрагмент)
 services:
   db:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: akasha
       POSTGRES_USER: akasha
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
+      POSTGRES_PASSWORD: ${AKASHA_DB_PASSWORD:-akasha}
 
   akasha:
-    build: ./Akasha.Server
+    build: .
     environment:
-      - ConnectionStrings__Default=Host=db;Database=akasha;Username=akasha;Password=${POSTGRES_PASSWORD}
-      - AKASHA_MASTER_KEY=${AKASHA_MASTER_KEY}
-      - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
-      - Telegram__OwnerChatId=${TELEGRAM_OWNER_CHAT_ID}
+      ConnectionStrings__Akasha: Host=db;Database=akasha;Username=akasha;Password=${AKASHA_DB_PASSWORD:-akasha}
+      AKASHA_OWNER_EMAIL: ${AKASHA_OWNER_EMAIL:-owner@localhost}
+      AKASHA_OWNER_PASSWORD: ${AKASHA_OWNER_PASSWORD:-}
+      AKASHA_MASTER_KEY: ${AKASHA_MASTER_KEY:-}
+      AKASHA_TELEGRAM_BOT_TOKEN: ${AKASHA_TELEGRAM_BOT_TOKEN:-}
+      AKASHA_TELEGRAM_CHAT_ID: ${AKASHA_TELEGRAM_CHAT_ID:-}
     ports:
-      - "5077:8080"
-    depends_on:
-      - db
-    restart: unless-stopped
-
-volumes:
-  pgdata:
+      - "${AKASHA_HOST:-127.0.0.1}:${AKASHA_PORT:-8080}:${AKASHA_PORT:-8080}"
 ```
 
-`.env` (не коммитить):
+`.env` (не коммитить) — см. `.env.example`:
 ```
-POSTGRES_PASSWORD=...
-AKASHA_MASTER_KEY=...
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_OWNER_CHAT_ID=...
+AKASHA_PORT=8080
+AKASHA_HOST=127.0.0.1
+AKASHA_DB_PASSWORD=change-me
+AKASHA_OWNER_EMAIL=you@example.com
+AKASHA_OWNER_PASSWORD=
+AKASHA_MASTER_KEY=
+AKASHA_TELEGRAM_BOT_TOKEN=
+AKASHA_TELEGRAM_CHAT_ID=
 ```
 
 ---
@@ -1093,7 +1096,7 @@ TELEGRAM_OWNER_CHAT_ID=...
 | Аспект | Мера |
 |---|---|
 | API-ключи | Argon2id хеш, plaintext один раз, revoke, last_used_at |
-| Secrets | AES-GCM, ключ из ENV (server) / master-password (portable), **не синхронизируются**, **агентам недоступны** |
+| Secrets | AES-GCM, ключ из `AKASHA_MASTER_KEY` или автосгенерированный `data/master.key`, **не синхронизируются**, **агентам недоступны** |
 | Portable | Слушает только `127.0.0.1`, никогда `0.0.0.0` |
 | Query engine | Трансляция в EF Core `IQueryable`, whitelist полей/таблиц, timeout 5с, limit ≤ 1000 |
 | JMESPath | Sandbox, без File/HTTP/Process |
