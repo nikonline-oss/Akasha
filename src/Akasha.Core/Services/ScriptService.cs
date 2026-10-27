@@ -5,6 +5,7 @@ using Akasha.Core.Data;
 using Akasha.Core.Models;
 using Akasha.Core.Query;
 using Microsoft.EntityFrameworkCore;
+using ZiggyCreatures.Caching.Fusion;
 
 namespace Akasha.Core.Services;
 
@@ -39,10 +40,11 @@ public class ScriptService
     private readonly QueryEngine _engine;
     private readonly MetaService _meta;
     private readonly AuditService _audit;
+    private readonly IFusionCache _cache;
 
-    public ScriptService(AkashaDbContext db, QueryEngine engine, MetaService meta, AuditService audit)
+    public ScriptService(AkashaDbContext db, QueryEngine engine, MetaService meta, AuditService audit, IFusionCache cache)
     {
-        _db = db; _engine = engine; _meta = meta; _audit = audit;
+        _db = db; _engine = engine; _meta = meta; _audit = audit; _cache = cache;
     }
 
     public record ScriptRunResult(JsonElement Result, bool Cached, DateTimeOffset ComputedAt,
@@ -62,7 +64,13 @@ public class ScriptService
 
         var dataVersion = await _meta.GetDataVersionAsync(ct);
         var cacheKey = BuildCacheKey(script.Id, script.Version, @params, dataVersion);
+        var ttl = TimeSpan.FromSeconds(Math.Max(script.CacheTtl, 1));
 
+        // L1: FusionCache (in-memory).
+        var l1 = await _cache.GetOrDefaultAsync<ScriptRunResult>(cacheKey, token: ct);
+        if (l1 is not null) return l1 with { Cached = true };
+
+        // L2: таблица script_cache (переживает рестарт приложения).
         // Ключ уникален — берём запись и проверяем срок годности в памяти
         // (сравнения DateTimeOffset в LINQ-to-SQL провайдером SQLite не транслируются).
         var cacheCandidate = await _db.ScriptCache.AsNoTracking()
@@ -71,8 +79,10 @@ public class ScriptService
             ? cacheCandidate : null;
         if (cachedItem is not null)
         {
-            return new ScriptRunResult(JsonDocument.Parse(cachedItem.ResultJson).RootElement.Clone(),
+            var res = new ScriptRunResult(JsonDocument.Parse(cachedItem.ResultJson).RootElement.Clone(),
                 true, cachedItem.ComputedAt, cachedItem.ScriptVersion, cachedItem.DataVersion, 0);
+            await _cache.SetAsync(cacheKey, res, ttl, token: ct);
+            return res;
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -114,8 +124,10 @@ public class ScriptService
         }
         catch { /* cache write is best-effort */ }
 
-        return new ScriptRunResult(envelope.Clone(), false, item.ComputedAt, script.Version, dataVersion,
+        var computed = new ScriptRunResult(envelope.Clone(), false, item.ComputedAt, script.Version, dataVersion,
             sw.Elapsed.TotalMilliseconds);
+        await _cache.SetAsync(cacheKey, computed, ttl, token: ct);
+        return computed;
     }
 
     public async Task InvalidateAsync(string slug, CancellationToken ct = default)
@@ -125,6 +137,7 @@ public class ScriptService
         var stale = await _db.ScriptCache.Where(c => c.ScriptId == script.Id).ToListAsync(ct);
         _db.ScriptCache.RemoveRange(stale);
         await _db.SaveChangesAsync(ct);
+        _cache.Clear();
         await _audit.LogAsync("owner", "invalidate", "scripts", script.Id, null, ct);
     }
 
