@@ -67,7 +67,7 @@ public class AkashaDbContext : DbContext
             v => v.ToList());
         var embConv = new ValueConverter<Vector?, string?>(
             v => v == null ? null : string.Join(',', v.ToArray().Select(f => f.ToString("R", CultureInfo.InvariantCulture))),
-            s => string.IsNullOrEmpty(s) ? null : new Vector(s.Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray()));
+            s => string.IsNullOrEmpty(s) ? null : new Vector(s.Split(',', StringSplitOptions.None).Select(x => float.Parse(x, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture)).ToArray()));
 
         // ─── Owner ────────────────────────────────────────────────────────────
         b.Entity<Owner>(e =>
