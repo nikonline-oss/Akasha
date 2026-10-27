@@ -269,6 +269,9 @@ docker compose build && docker compose up -d
 | `AKASHA_ONNX_MODEL` | оба | путь к `bge-micro-v2.onnx` — включает ONNX-эмбеддинги (иначе hashed-ngram fallback) |
 | `AKASHA_ONNX_VOCAB` | оба | путь к `vocab.txt` (default: рядом с моделью) |
 | `AKASHA_ONNX_MAXLEN` | оба | длина последовательности для ONNX (default 256, диапазон 8–512) |
+| `AKASHA_AI_API_KEY` | оба | ключ LLM — включает AI-assist «✨ Помочь с запросом» в конструкторе скриптов |
+| `AKASHA_AI_MODEL` | оба | модель LLM (default `gpt-4o-mini`) |
+| `AKASHA_AI_ENDPOINT` | оба | базовый URL OpenAI-совместимого API (default `https://api.openai.com/v1`) |
 
 ### ONNX-эмбеддинги (опционально)
 
@@ -283,4 +286,16 @@ docker compose build && docker compose up -d
    ```
 3. Перезапусти приложение. Если модель не загрузилась (нет файла/несовместимый формат) — в лог
    уйдёт предупреждение и приложение продолжит работать на hashed-ngram fallback.
+
+### AI-assist (опционально)
+
+Кнопка «✨ Помочь с запросом» в конструкторе скриптов генерирует structured JSON Query по текстовому
+описанию через OpenAI-совместимый `/chat/completions` (OpenAI / OpenRouter / DeepSeek / Ollama):
+
+```bash
+export AKASHA_AI_API_KEY=sk-...          # без ключа кнопка скрыта
+export AKASHA_AI_MODEL=gpt-4o-mini       # необязательно
+export AKASHA_AI_ENDPOINT=https://api.openai.com/v1   # необязательно; для Ollama: http://127.0.0.1:11434/v1
+```
+
 

@@ -105,6 +105,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SyncClient>();
         // FusionCache: L1-кэш in-memory (инвалидация по data_version в ключе + TTL скрипта).
         services.AddFusionCache();
+        services.AddSingleton<Akasha.Server.Ai.QueryAssistService>();
 
         services.AddScoped<AuditService>();
         services.AddScoped<MetaService>();
