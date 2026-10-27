@@ -1,0 +1,94 @@
+@page "/sync"
+@inject SyncClient SyncClient
+@inject SyncService SyncSvc
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" GutterBottom="true">Синхронизация</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Потянуть изменения с сервера и отправить локальные правки (last-write-wins).
+    Секреты и агенты <b>никогда</b> не синхронизируются. Настройки сохраняются в <code>data/sync-config.json</code>.
+</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_serverUrl" Label="URL сервера"
+                          Placeholder="https://akasha.example.com" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_deviceId" Label="ID устройства" Placeholder="laptop" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_deviceKey" Label="Ключ устройства (ak_…)" Variant="Variant.Outlined"
+                          InputType="InputType.Password" />
+        </MudItem>
+        <MudItem xs="12" Class="d-flex gap-2 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveConfig">Сохранить настройки</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Sync" OnClick="RunSync" Disabled="@_busy">
+                @(_busy ? "Синхронизация…" : "Синхронизировать")
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_lastSync is not null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        Последняя синхронизация: @_lastSync.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+    </MudAlert>
+}
+
+@if (_result is not null)
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" GutterBottom="true">Результат</MudText>
+        <MudGrid Spacing="3">
+            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Success">Получено: @_result.Pulled</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Success">Отправлено: @_result.Pushed</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string">Пропущено (старше): @_result.SkippedOlder</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Warning">Конфликты: @_result.Conflicts</MudChip></MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    private string _serverUrl = "", _deviceId = "", _deviceKey = "";
+    private bool _busy;
+    private SyncClient.SyncResult? _result;
+    private DateTimeOffset? _lastSync;
+
+    protected override void OnInitialized()
+    {
+        var cfg = SyncClient.LoadConfig();
+        _serverUrl = cfg.ServerUrl ?? "";
+        _deviceKey = cfg.DeviceKey ?? "";
+        _deviceId = cfg.DeviceId ?? "";
+        _lastSync = SyncClient.LastSync();
+    }
+
+    private void SaveConfig()
+    {
+        SyncClient.SaveConfig(_serverUrl, _deviceKey, _deviceId);
+        Snackbar.Add("Настройки сохранены", Severity.Success);
+    }
+
+    private async Task RunSync()
+    {
+        _busy = true;
+        try
+        {
+            _result = await SyncClient.SyncAsync(SyncSvc);
+            _lastSync = SyncClient.LastSync();
+            Snackbar.Add("Синхронизация завершена", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
