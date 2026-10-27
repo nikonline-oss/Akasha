@@ -21,3 +21,4 @@ data/akasha.db
 
 # Local env & secrets
 .env
+dist/

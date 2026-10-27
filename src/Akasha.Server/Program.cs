@@ -25,6 +25,7 @@ var app = builder.Build();
 // Routing ДО AuthMiddleware: middleware полагается на ctx.GetEndpoint() для
 // scope-проверок (RequireScope) — без выбора endpoint'а проверки не работают.
 app.UseRouting();
+app.UseStaticFiles();
 app.UseMiddleware<AuthMiddleware>();
 app.MapAkashaApi();
 app.MapMcp();

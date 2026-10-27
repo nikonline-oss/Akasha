@@ -6,7 +6,7 @@ COPY src/Akasha.Core/Akasha.Core.csproj src/Akasha.Core/
 COPY src/Akasha.Server/Akasha.Server.csproj src/Akasha.Server/
 RUN dotnet restore src/Akasha.Server/Akasha.Server.csproj
 COPY src/ src/
-RUN dotnet publish src/Akasha.Server/Akasha.Server.csproj -c Release -o /app --no-restore
+RUN dotnet publish src/Akasha.Server/Akasha.Server.csproj -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app

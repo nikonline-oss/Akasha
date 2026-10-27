@@ -73,6 +73,7 @@ async Task ServeAsync(bool portableOnly)
     var app = builder.Build();
     // Routing ДО AuthMiddleware: scope-проверки (RequireScope) полагаются на ctx.GetEndpoint()
     app.UseRouting();
+    app.UseStaticFiles();
     app.UseMiddleware<AuthMiddleware>();
     app.MapAkashaApi();
     app.MapMcp();
