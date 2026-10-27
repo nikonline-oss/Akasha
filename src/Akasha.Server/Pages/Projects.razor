@@ -3,10 +3,10 @@
 @inject RecordsService Records
 @inject ISnackbar Snackbar
 
-<MudText Typo="Typo.h5" GutterBottom="true">Проекты</MudText>
+<MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.projects")</MudText>
 
 <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-4"
-           StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _createOpen = true)">Новый проект</MudButton>
+           StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _createOpen = true)">@Loc.T("projects.new")</MudButton>
 
 <MudGrid Spacing="3">
     @foreach (var p in _projects)
@@ -34,7 +34,7 @@
                 }
                 <div class="mt-3">
                     <MudLink Href="@($"/entries?project={p.Slug}")" Underline="Underline.None">
-                        Записи проекта →
+                        @Loc.T("projects.entries")
                     </MudLink>
                 </div>
             </MudPaper>

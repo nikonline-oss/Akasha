@@ -5,7 +5,7 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
 
-<MudText Typo="Typo.h5" GutterBottom="true">@(IsNew ? "Новая запись" : "Запись")</MudText>
+<MudText Typo="Typo.h5" GutterBottom="true">@Loc.T(IsNew ? "nav.newEntry" : "page.entry")</MudText>
 
 @if (!_loading)
 {

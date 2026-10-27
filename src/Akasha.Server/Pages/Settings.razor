@@ -1,0 +1,82 @@
+@page "/settings"
+@inject AppState AppState
+@inject IJSRuntime Js
+@implements IDisposable
+
+<PageTitle>Akasha — @Loc.T("settings.title")</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("settings.title")</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@Loc.T("settings.subtitle")</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6" GutterBottom="true">@Loc.T("settings.language")</MudText>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Variant="@(AppState.Language == "ru" ? Variant.Filled : Variant.Outlined)"
+                   Color="Color.Primary" OnClick="@(() => SetLanguage("ru"))">Русский</MudButton>
+        <MudButton Variant="@(AppState.Language == "en" ? Variant.Filled : Variant.Outlined)"
+                   Color="Color.Primary" OnClick="@(() => SetLanguage("en"))">English</MudButton>
+    </MudStack>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">@Loc.T("settings.languageHint")</MudText>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6" GutterBottom="true">@Loc.T("settings.appearance")</MudText>
+    <MudText Typo="Typo.subtitle2" Class="mb-2">@Loc.T("settings.theme")</MudText>
+    <MudStack Row="true" Spacing="2">
+        @foreach (var t in Themes)
+        {
+            <MudButton Variant="@(AppState.ThemeName == t.Key ? Variant.Filled : Variant.Outlined)"
+                       Color="Color.Primary" OnClick="@(() => SetTheme(t.Key))">@Loc.T(t.LabelKey)</MudButton>
+        }
+    </MudStack>
+    <MudDivider Class="my-4" />
+    <MudSwitch T="bool" Value="@AppState.IsDarkMode" ValueChanged="@SetDark"
+               Color="Color.Primary" Label="@Loc.T("settings.dark")" />
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6" GutterBottom="true">@Loc.T("settings.preview")</MudText>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary">@Loc.T("common.save")</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary">@Loc.T("common.cancel")</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error">@Loc.T("common.delete")</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private static readonly (string Key, string LabelKey)[] Themes =
+    {
+        ("violet", "settings.violet"),
+        ("ocean", "settings.ocean"),
+        ("forest", "settings.forest"),
+    };
+
+    protected override void OnInitialized() => AppState.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task SetLanguage(string lang)
+    {
+        AppState.SetLanguage(lang);
+        await Persist("akasha_lang", lang);
+    }
+
+    private async Task SetTheme(string name)
+    {
+        AppState.SetTheme(name);
+        await Persist("akasha_theme", name);
+    }
+
+    private async Task SetDark(bool dark)
+    {
+        AppState.SetDark(dark);
+        await Persist("akasha_dark", dark ? "1" : "0");
+    }
+
+    private async Task Persist(string key, string value)
+    {
+        try { await Js.InvokeVoidAsync("localStorage.setItem", key, value); } catch { }
+    }
+
+    public void Dispose() => AppState.Changed -= OnChanged;
+}
