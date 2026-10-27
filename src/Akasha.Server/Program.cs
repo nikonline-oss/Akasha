@@ -29,7 +29,7 @@ app.UseStaticFiles();
 app.UseMiddleware<AuthMiddleware>();
 app.MapAkashaApi();
 app.MapMcp();
-app.MapGet("/login", () => Results.Content(LoginPage.Html, "text/html"));
+app.MapGet("/login", (HttpContext ctx) => Results.Content(LoginPage.Html(LoginPage.ResolveLang(ctx)), "text/html"));
 app.MapGet("/logout", (HttpContext ctx) =>
 {
     ctx.Response.Cookies.Delete(ApiEndpoints.SessionCookie);
