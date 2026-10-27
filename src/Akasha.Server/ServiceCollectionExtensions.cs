@@ -26,14 +26,17 @@ public class EmbeddingWorkerService : BackgroundService
     private readonly EmbeddingQueue _queue;
     private readonly IEmbeddingService _embeddings;
     private readonly IDbContextFactoryLike _dbFactory;
+    private readonly ILogger<EmbeddingWorkerService> _logger;
 
-    public EmbeddingWorkerService(EmbeddingQueue queue, IEmbeddingService embeddings, IDbContextFactoryLike dbFactory)
+    public EmbeddingWorkerService(EmbeddingQueue queue, IEmbeddingService embeddings, IDbContextFactoryLike dbFactory,
+        ILogger<EmbeddingWorkerService> logger)
     {
-        _queue = queue; _embeddings = embeddings; _dbFactory = dbFactory;
+        _queue = queue; _embeddings = embeddings; _dbFactory = dbFactory; _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Embedding worker started ({Kind})", _embeddings.GetType().Name);
         await foreach (var id in _queue.Reader.ReadAllAsync(stoppingToken))
         {
             try
@@ -44,9 +47,10 @@ public class EmbeddingWorkerService : BackgroundService
                 entry.Embedding = new Vector(_embeddings.Embed(entry.Title + "\n" + entry.Body));
                 entry.StateHash = ContentHash.Of(entry);
                 await db.SaveChangesAsync(stoppingToken);
+                _logger.LogDebug("Embedding computed for {Id}", id);
             }
             catch (OperationCanceledException) { throw; }
-            catch { /* best-effort */ }
+            catch (Exception ex) { _logger.LogWarning(ex, "Embedding failed for {Id}", id); }
         }
     }
 }
