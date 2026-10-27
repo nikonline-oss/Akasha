@@ -10,6 +10,9 @@ public static class Loc
 
     public static string T(string key, params object[] args) => string.Format(T(key), args);
 
+    /// <summary>Локализованное имя типа записи (note/decision/source/comment/snippet).</summary>
+    public static string Kind(string kind) => T("kind." + kind);
+
     private static readonly Dictionary<string, string> Ru = new()
     {
         // навигация
@@ -88,6 +91,14 @@ public static class Loc
         // апрувы
         ["approvals.empty"] = "Очередь пуста.",
         ["approvals.pending"] = "Ожидают",
+        // типы записей
+        ["kind.note"] = "Заметка",
+        ["kind.decision"] = "Решение",
+        ["kind.source"] = "Источник",
+        ["kind.comment"] = "Комментарий",
+        ["kind.snippet"] = "Сниппет",
+        ["entry.kind"] = "Тип",
+        ["scripts.kind"] = "Тип (kind)",
     };
 
     private static readonly Dictionary<string, string> En = new()
@@ -168,5 +179,13 @@ public static class Loc
         // approvals
         ["approvals.empty"] = "Queue is empty.",
         ["approvals.pending"] = "Pending",
+        // entry kinds
+        ["kind.note"] = "Note",
+        ["kind.decision"] = "Decision",
+        ["kind.source"] = "Source",
+        ["kind.comment"] = "Comment",
+        ["kind.snippet"] = "Snippet",
+        ["entry.kind"] = "Kind",
+        ["scripts.kind"] = "Kind",
     };
 }

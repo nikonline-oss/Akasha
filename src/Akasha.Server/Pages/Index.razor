@@ -43,7 +43,7 @@
             <MudList T="string">
                 @foreach (var e in _entries)
                 {
-                    <MudListItem T="string" Icon="@KindIcon(e.Kind)" SecondaryText="@e.Kind">
+                    <MudListItem T="string" Icon="@KindIcon(e.Kind)" SecondaryText="@Loc.Kind(e.Kind)">
                         <MudLink Href="@($"/entries/{e.Id}")">@e.Title</MudLink>
                     </MudListItem>
                 }
