@@ -26,7 +26,7 @@
 
 @if (_searched)
 {
-    <MudText Typo="Typo.body2" Class="mb-2">Найдено: @_hits.Count</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">@Loc.T("search.found", _hits.Count)</MudText>
     <MudList T="string">
         @foreach (var h in _hits)
         {
@@ -40,7 +40,7 @@
     </MudList>
     @if (_hits.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Ничего не найдено.</MudAlert>
+        <MudAlert Severity="Severity.Info">@Loc.T("search.empty")</MudAlert>
     }
 }
 

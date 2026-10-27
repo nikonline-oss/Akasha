@@ -12,7 +12,7 @@
     <MudPaper Class="pa-4" MaxWidth="Large">
         <MudGrid Spacing="3">
             <MudItem xs="12">
-                <MudTextField @bind-Value="_title" Label="Заголовок" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_title" Label="@Loc.T("entry.title")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="6">
                 <MudSelect T="string" @bind-Value="_kind" Label="@Loc.T("entry.kind")" Variant="Variant.Outlined">
@@ -23,7 +23,7 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6">
-                <MudSelect T="string?" @bind-Value="_projectId" Label="Проект" Variant="Variant.Outlined" Clearable="true">
+                <MudSelect T="string?" @bind-Value="_projectId" Label="@Loc.T("entry.project")" Variant="Variant.Outlined" Clearable="true">
                     @foreach (var p in _projects)
                     {
                         <MudSelectItem T="string?" Value="@p.Id.ToString()">@p.Name</MudSelectItem>
@@ -31,27 +31,26 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_tags" Label="Теги (через запятую)" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_tags" Label="@Loc.T("entry.tags")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_body" Label="Тело (Markdown)" Lines="12" Variant="Variant.Outlined"
+                <MudTextField @bind-Value="_body" Label="@Loc.T("entry.body")" Lines="12" Variant="Variant.Outlined"
                               Adornment="Adornment.None" Style="font-family: monospace;" />
             </MudItem>
             <MudItem xs="12" Class="d-flex gap-2">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Сохранить</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@Loc.T("common.save")</MudButton>
                 @if (!IsNew)
                 {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Delete">Удалить</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Delete">@Loc.T("common.delete")</MudButton>
                 }
-                <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/"))">Отмена</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/"))">@Loc.T("common.cancel")</MudButton>
             </MudItem>
         </MudGrid>
         @if (!IsNew && _entry != null)
         {
             <MudDivider Class="my-3" />
             <MudText Typo="Typo.caption">
-                v@_entry.Version · создана @_entry.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ·
-                автор @_entry.CreatedBy
+                @Loc.T("entry.meta", _entry.Version, _entry.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm"), _entry.CreatedBy ?? "")
             </MudText>
         }
     </MudPaper>
@@ -89,20 +88,20 @@
     {
         if (string.IsNullOrWhiteSpace(_title))
         {
-            Snackbar.Add("Заголовок обязателен", Severity.Warning);
+            Snackbar.Add(Loc.T("entry.titleRequired"), Severity.Warning);
             return;
         }
         var payload = BuildPayload();
         if (IsNew)
         {
             var e = await Records.CreateEntryAsync(payload, "owner");
-            Snackbar.Add("Запись создана", Severity.Success);
+            Snackbar.Add(Loc.T("entry.created"), Severity.Success);
             Nav.NavigateTo($"/entries/{e.Id}");
         }
         else
         {
             if (Id.HasValue) await Records.UpdateEntryAsync(Id.Value, payload, "owner");
-            Snackbar.Add("Запись сохранена", Severity.Success);
+            Snackbar.Add(Loc.T("entry.saved"), Severity.Success);
             StateHasChanged();
         }
     }
@@ -124,7 +123,7 @@
     {
         if (Id is null) return;
         await Records.DeleteEntryAsync(Id.Value, "owner");
-        Snackbar.Add("Запись удалена", Severity.Info);
+        Snackbar.Add(Loc.T("entry.deleted"), Severity.Info);
         Nav.NavigateTo("/");
     }
 }

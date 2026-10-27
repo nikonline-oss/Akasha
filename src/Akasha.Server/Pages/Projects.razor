@@ -43,15 +43,15 @@
 </MudGrid>
 
 <MudDialog @bind-visible="_createOpen">
-    <TitleContent>Новый проект</TitleContent>
+    <TitleContent>@Loc.T("projects.new")</TitleContent>
     <DialogContent>
-        <MudTextField @bind-Value="_name" Label="Название" Class="mb-2" />
-        <MudTextField @bind-Value="_description" Label="Описание" Lines="2" />
-        <MudTextField @bind-Value="_stack" Label="Стек (через запятую)" Class="mt-2" />
+        <MudTextField @bind-Value="_name" Label="@Loc.T("projects.name")" Class="mb-2" />
+        <MudTextField @bind-Value="_description" Label="@Loc.T("projects.desc")" Lines="2" />
+        <MudTextField @bind-Value="_stack" Label="@Loc.T("projects.stack")" Class="mt-2" />
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => _createOpen = false)">Отмена</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">Создать</MudButton>
+        <MudButton OnClick="@(() => _createOpen = false)">@Loc.T("common.cancel")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">@Loc.T("common.create")</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -76,7 +76,7 @@
             _createOpen = false;
             _name = _description = _stack = "";
             _projects = await Db.Projects.Where(p => p.DeletedAt == null).OrderBy(p => p.Name).ToListAsync();
-            Snackbar.Add("Проект создан", Severity.Success);
+            Snackbar.Add(Loc.T("projects.created"), Severity.Success);
         }
         catch (Exception ex)
         {

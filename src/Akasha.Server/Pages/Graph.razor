@@ -6,7 +6,7 @@
 
 <MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.graph")</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-    Узлы — записи, рёбра — связи (mentions / supersedes / contradicts / derived_from). Перетаскивай и масштабируй; клик по узлу открывает запись.
+    @Loc.T("graph.hint")
 </MudText>
 
 @if (_loading)
@@ -15,7 +15,7 @@
 }
 else if (_nodes.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">Нет записей для отображения графа.</MudAlert>
+    <MudAlert Severity="Severity.Info">@Loc.T("graph.empty")</MudAlert>
 }
 else
 {
