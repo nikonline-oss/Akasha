@@ -298,4 +298,44 @@ export AKASHA_AI_MODEL=gpt-4o-mini       # необязательно
 export AKASHA_AI_ENDPOINT=https://api.openai.com/v1   # необязательно; для Ollama: http://127.0.0.1:11434/v1
 ```
 
+## 11. Проверка после деплоя
+
+```bash
+# из каталога с docker-compose.yml
+./scripts/verify.sh                        # http://127.0.0.1:8080
+./scripts/verify.sh http://62.217.177.53:9090
+AKASHA_KEY=ak_... ./scripts/verify.sh     # + API-проверки (auth, search, context)
+```
+
+Скрипт проверяет:
+
+- `GET /healthz` и `GET /login` (200);
+- БД: расширение `vector`, таблицы `context_notes` / `schema_migrations`, история миграций,
+  ivfflat-индекс `ix_entries_embedding`;
+- записи без эмбеддинга (`Embedding IS NULL` → в «Настройки → Пересчитать эмбеддинги»);
+- (с ключом) `auth/me`, `projects`, поиск в режимах `fts` / `vector` / `hybrid`, `context`.
+
+### ONNX-модель (опционально)
+
+`bge-micro-v2` на HuggingFace сейчас отдаёт 401; рабочий аналог той же размерности (384) —
+`Xenova/bge-small-en-v1.5`:
+
+```bash
+mkdir -p models && cd models
+curl -L -o model.onnx https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/onnx/model_quantized.onnx
+curl -L -o vocab.txt https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/vocab.txt
+cd ..
+```
+
+В `docker-compose.yml`:
+
+```yaml
+    volumes:
+      - ./models:/app/models
+    environment:
+      AKASHA_ONNX_MODEL: /app/models/model.onnx
+      AKASHA_ONNX_VOCAB: /app/models/vocab.txt
+```
+
+
 
