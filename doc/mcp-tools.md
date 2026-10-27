@@ -10,7 +10,7 @@ MCP-сервер доступен на `POST /mcp` (streamable HTTP, JSON-RPC 2.
 [AKASHA_DATA_END]
 ```
 
-> Stdio-режим MCP пока не реализован — агенты подключаются только по HTTP.
+> Stdio-режим MCP также доступен: `akasha mcp` (portable) — JSON-RPC поверх stdin/stdout.
 
 ## Протокол
 
@@ -23,7 +23,7 @@ curl -X POST http://127.0.0.1:5173/mcp \
 
 Поддерживаются методы: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`.
 
-## Список инструментов (10)
+## Список инструментов (14)
 
 ### akasha_query_schema
 Вернуть JSON Schema данных и синтаксиса Structured Query + примеры. **Вызывать первым**, чтобы строить корректные запросы. Вход: `{}`.
@@ -73,6 +73,25 @@ curl -X POST http://127.0.0.1:5173/mcp \
 ### akasha_get_proposal_status
 Статус своего предложения. Вход: `{"id":"<uuid>"}` → `{id,status,review_comment,reviewed_at}`.
 
+## Хранилище контекста агента (без апрувов)
+
+Отдельная рабочая область, куда агент пишет **напрямую**, без proposal/approval. Нужен scope `context`.
+Основное хранилище (`entries`) по-прежнему меняется только через `akasha_propose`.
+
+### akasha_context_write
+Создать заметку контекста. Вход: `{"title":"...", "body":"...", "project_id":"<uuid>"?, "tags":["a"]?}`
+→ `{id,title,project_id,created_at}`.
+
+### akasha_context_list
+Список заметок контекста. Вход: `{"project_id"?, "agent_id"?, "q"?, "limit"?}` → `{notes:[...]}`.
+Агент видит только свои заметки; владелец — все.
+
+### akasha_context_get
+Заметка по id. Вход: `{"id":"<uuid>"}`.
+
+### akasha_context_delete
+Удалить свою заметку контекста. Вход: `{"id":"<uuid>"}`.
+
 ## Скоупы
 
 | Инструменты | Требуемый scope |
@@ -80,6 +99,8 @@ curl -X POST http://127.0.0.1:5173/mcp \
 | `akasha_query_schema`, `akasha_list_projects`, `akasha_get_project`, `akasha_get_entry`, `akasha_search`, `akasha_run_query` | `read` |
 | `akasha_propose`, `akasha_propose_script`, `akasha_get_proposal_status` | `propose` |
 | `akasha_run_script` | `scripts` |
+| `akasha_context_write`, `akasha_context_delete` | `context` |
+| `akasha_context_list`, `akasha_context_get` | `read` |
 
 Недостаточный scope → ошибка (`-32001` в JSON-RPC).
 

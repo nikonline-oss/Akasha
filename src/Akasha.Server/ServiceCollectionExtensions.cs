@@ -118,6 +118,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DiffService>();
         services.AddScoped<ExportService>();
         services.AddScoped<RecordsService>();
+        services.AddScoped<ContextStoreService>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddScoped<Akasha.Server.Mcp.McpService>();
         // Principal из Items["principal"], заполненного AuthMiddleware (нужен McpService)
@@ -150,6 +151,7 @@ public static class ServiceCollectionExtensions
         {
             await db.Database.EnsureCreatedAsync(ct);
             await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
+            await EnsureContextTableAsync(db, ct);
         }
         else
         {
@@ -158,6 +160,7 @@ public static class ServiceCollectionExtensions
                 // pgvector: расширение создаём ДО EnsureCreated, т.к. колонка Embedding имеет тип vector(384).
                 await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS vector;", ct);
                 await db.Database.EnsureCreatedAsync(ct);
+                await EnsureContextTableAsync(db, ct);
 
                 // EnsureCreated не мигрирует существующую схему. Если Embedding создан старой версией
                 // как text — конвертируем в vector(384); эмбеддинги пересоздаст фоновый worker.
@@ -205,5 +208,46 @@ public static class ServiceCollectionExtensions
         var db = scope.ServiceProvider.GetRequiredService<AkashaDbContext>();
         var ids = await db.Entries.Where(e => e.Embedding == null).Select(e => e.Id).ToListAsync(ct);
         foreach (var id in ids) queue.Enqueue(id);
+    }
+
+    /// <summary>Таблица контекста агентов: EnsureCreated не добавляет таблицы в существующую БД — создаём вручную.</summary>
+    private static async Task EnsureContextTableAsync(AkashaDbContext db, CancellationToken ct)
+    {
+        if (db.IsSqlite)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS context_notes (
+                  "Id" TEXT NOT NULL PRIMARY KEY,
+                  "AgentId" TEXT NULL,
+                  "ProjectId" TEXT NULL,
+                  "Title" TEXT NOT NULL,
+                  "Body" TEXT NOT NULL,
+                  "tags" TEXT NOT NULL,
+                  "CreatedAt" INTEGER NOT NULL,
+                  "UpdatedAt" INTEGER NOT NULL
+                );
+                """, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS \"IX_context_notes_ProjectId_UpdatedAt\" ON context_notes (\"ProjectId\", \"UpdatedAt\");", ct);
+        }
+        else
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS context_notes (
+                  "Id" uuid NOT NULL PRIMARY KEY,
+                  "AgentId" uuid NULL,
+                  "ProjectId" uuid NULL,
+                  "Title" text NOT NULL,
+                  "Body" text NOT NULL,
+                  "tags" text NOT NULL,
+                  "CreatedAt" timestamptz NOT NULL,
+                  "UpdatedAt" timestamptz NOT NULL
+                );
+                """, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS \"IX_context_notes_ProjectId_UpdatedAt\" ON context_notes (\"ProjectId\", \"UpdatedAt\");", ct);
+        }
     }
 }

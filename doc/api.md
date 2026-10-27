@@ -39,7 +39,19 @@
 | GET | `/api/v1/proposals/{id}` | agent(owner) | статус своего предложения |
 | GET | `/api/v1/proposals?status=` | agent | листинг (агент видит только свои) |
 
-Прямых write-эндпоинтов для агентов **не существует** — только proposals.
+Прямых write-эндпоинтов для **основного хранилища** (`entries`/`projects`) не существует — только proposals.
+
+## Context store (прямая запись агентами; scope: `context`)
+
+Отдельная рабочая область, куда агенты пишут **напрямую, без апрувов**. Не пересекается с `entries`
+(основное хранилище по-прежнему меняется только через proposals).
+
+| Метод | Путь | Scope | Описание |
+|---|---|---|---|
+| GET | `/api/v1/context?project_id=&agent_id=&q=&limit=` | `read` | список заметок (агент видит только свои) |
+| GET | `/api/v1/context/{id}` | `read` | одна заметка |
+| POST | `/api/v1/context` | `context` | `{title, body?, project_id?, tags?}` → заметка |
+| DELETE | `/api/v1/context/{id}` | `context` | удалить свою заметку |
 
 ## Admin (только владелец)
 

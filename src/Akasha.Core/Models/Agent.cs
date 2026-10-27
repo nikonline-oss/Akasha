@@ -22,7 +22,8 @@ public static class Scopes
     public const string Read = "read";
     public const string Propose = "propose";
     public const string Scripts = "scripts";
+    public const string Context = "context";       // прямое чтение/запись «контекста агента» без апрувов
 
-    public static readonly string[] All = { Read, Propose, Scripts };
+    public static readonly string[] All = { Read, Propose, Scripts, Context };
     public static bool IsValid(string scope) => All.Contains(scope);
 }

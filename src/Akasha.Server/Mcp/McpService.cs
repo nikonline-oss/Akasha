@@ -21,12 +21,13 @@ public class McpService
     private readonly QueryEngine _engine;
     private readonly ProposalService _proposals;
     private readonly ScriptService _scripts;
+    private readonly ContextStoreService _contexts;
     private readonly Principal _caller;
 
     public McpService(AkashaDbContext db, SearchService search, QueryEngine engine,
-        ProposalService proposals, ScriptService scripts, Principal caller)
+        ProposalService proposals, ScriptService scripts, ContextStoreService contexts, Principal caller)
     {
-        _db = db; _search = search; _engine = engine; _proposals = proposals; _scripts = scripts; _caller = caller;
+        _db = db; _search = search; _engine = engine; _proposals = proposals; _scripts = scripts; _contexts = contexts; _caller = caller;
     }
 
     public const string DataStart = "[AKASHA_DATA_START]";
@@ -43,6 +44,7 @@ public class McpService
         "akasha_search", "akasha_get_entry", "akasha_list_projects", "akasha_get_project",
         "akasha_run_query", "akasha_query_schema", "akasha_propose", "akasha_propose_script",
         "akasha_get_proposal_status", "akasha_run_script",
+        "akasha_context_write", "akasha_context_list", "akasha_context_get", "akasha_context_delete",
     };
 
     public sealed record ToolDef(string Name, string Description, JsonElement InputSchema);
@@ -72,6 +74,14 @@ public class McpService
                 o("""{"type":"object","properties":{"id":{"type":"string","format":"uuid"}},"required":["id"]}""")),
             new("akasha_run_script", "Run a saved script by slug with params. Results are cached by script.version + meta.data_version.",
                 o("""{"type":"object","properties":{"slug":{"type":"string"},"params":{"type":"object"}},"required":["slug"]}""")),
+            new("akasha_context_write", "Write to the agent context store — a separate scratch area written DIRECTLY, without owner approval. Use it for working notes; the main vault still requires approval.",
+                o("""{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"project_id":{"type":"string","format":"uuid"},"tags":{"type":"array","items":{"type":"string"}}},"required":["title"]}""")),
+            new("akasha_context_list", "List agent context notes (optionally filtered by project/agent/text).",
+                o("""{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"q":{"type":"string"},"limit":{"type":"integer","default":100,"maximum":500}}}""")),
+            new("akasha_context_get", "Get a single agent context note by id.",
+                o("""{"type":"object","properties":{"id":{"type":"string","format":"uuid"}},"required":["id"]}""")),
+            new("akasha_context_delete", "Delete one of your own agent context notes.",
+                o("""{"type":"object","properties":{"id":{"type":"string","format":"uuid"}},"required":["id"]}""")),
         };
     }
 
@@ -82,6 +92,8 @@ public class McpService
         {
             "akasha_propose" or "akasha_propose_script" or "akasha_get_proposal_status" => Scopes.Propose,
             "akasha_run_script" => Scopes.Scripts,
+            "akasha_context_write" or "akasha_context_delete" => Scopes.Context,
+            "akasha_context_list" or "akasha_context_get" => Scopes.Read,
             _ => Scopes.Read,
         };
         if (!_caller.HasScope(requiredScope))
@@ -102,6 +114,10 @@ public class McpService
             "akasha_propose_script" => await ProposeAsync(isScript: true),
             "akasha_get_proposal_status" => await ProposalStatusAsync(),
             "akasha_run_script" => await RunScriptAsync(),
+            "akasha_context_write" => await ContextWriteAsync(),
+            "akasha_context_list" => await ContextListAsync(),
+            "akasha_context_get" => await ContextGetAsync(),
+            "akasha_context_delete" => await ContextDeleteAsync(),
             _ => throw new ArgumentException($"unknown tool '{tool}'"),
         };
 
@@ -189,6 +205,48 @@ public class McpService
             var prm = Opt("params") ?? JsonDocument.Parse("{}").RootElement;
             var r = await _scripts.RunAsync(Str("slug"), prm, ct);
             return new { result = r.Result, cached = r.Cached, script_version = r.ScriptVersion, data_version = r.DataVersion };
+        }
+
+        async Task<object> ContextWriteAsync()
+        {
+            Guid? projectId = args.TryGetProperty("project_id", out var pj) && Guid.TryParse(pj.GetString(), out var pg) ? pg : null;
+            var tags = args.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.Array
+                ? tg.EnumerateArray().Select(x => x.GetString() ?? "").ToList() : null;
+            var agentId = _caller.IsOwner ? (Guid?)null : _caller.Agent!.Id;
+            var n = await _contexts.CreateAsync(_caller.Actor, agentId, projectId, Str("title"), Str("body"), tags, ct);
+            return new { id = n.Id, title = n.Title, project_id = n.ProjectId, created_at = n.CreatedAt };
+        }
+
+        async Task<object> ContextListAsync()
+        {
+            Guid? projectId = args.TryGetProperty("project_id", out var pj) && Guid.TryParse(pj.GetString(), out var pg) ? pg : null;
+            Guid? agentId = _caller.IsOwner
+                ? (args.TryGetProperty("agent_id", out var ag) && Guid.TryParse(ag.GetString(), out var af) ? af : null)
+                : _caller.Agent!.Id;
+            var limit = args.TryGetProperty("limit", out var l) && l.TryGetInt32(out var li) ? li : 100;
+            var items = await _contexts.ListAsync(projectId, agentId, Str("q"), limit, ct);
+            return new
+            {
+                notes = items.Select(x => new
+                {
+                    id = x.Id, agent_id = x.AgentId, project_id = x.ProjectId,
+                    title = x.Title, body = x.Body, tags = x.Tags, updated_at = x.UpdatedAt
+                })
+            };
+        }
+
+        async Task<object> ContextGetAsync()
+        {
+            var n = await _contexts.GetAsync(Guid.Parse(Str("id")), ct)
+                    ?? throw new KeyNotFoundException("context note not found");
+            return new { id = n.Id, agent_id = n.AgentId, project_id = n.ProjectId, title = n.Title, body = n.Body, tags = n.Tags, created_at = n.CreatedAt, updated_at = n.UpdatedAt };
+        }
+
+        async Task<object> ContextDeleteAsync()
+        {
+            var agentId = _caller.IsOwner ? (Guid?)null : _caller.Agent!.Id;
+            var ok = await _contexts.DeleteAsync(_caller.Actor, Guid.Parse(Str("id")), agentId, ct);
+            return new { deleted = ok };
         }
     }
 }

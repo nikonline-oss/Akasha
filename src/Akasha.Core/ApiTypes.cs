@@ -97,6 +97,16 @@ public static class ApiTypes
         JsonElement Query, string? Transform, string? OutputFormat,
         JsonElement? ParamsSchema, int? CacheTtl);
 
+    // ─── Context store (агенты пишут без апрувов) ─────────────────────────────
+    public sealed record ContextCreateRequest(Guid? ProjectId, string Title, string? Body, List<string>? Tags);
+
+    public sealed record ContextDto(
+        Guid Id, Guid? AgentId, Guid? ProjectId, string Title, string Body,
+        List<string> Tags, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+    public static ContextDto ToDto(this Models.ContextNote n) => new(
+        n.Id, n.AgentId, n.ProjectId, n.Title, n.Body, n.Tags, n.CreatedAt, n.UpdatedAt);
+
     // ─── Sync ─────────────────────────────────────────────────────────────────
     public sealed record SyncPushRequest(string DeviceId, List<SyncChangeDto> Changes);
     public sealed record SyncChangeDto(string Entity, string Op, JsonElement Data, DateTimeOffset UpdatedAt);

@@ -44,6 +44,12 @@ public static class ApiEndpoints
         api.MapGet("/proposals/{id:guid}", GetProposalAsync).RequireScope(Scopes.Read);
         api.MapGet("/proposals", ListProposalsAsync).RequireScope(Scopes.Read);
 
+        // context store — агенты пишут напрямую, без апрувов (scope context)
+        api.MapGet("/context", ListContextAsync).RequireScope(Scopes.Read);
+        api.MapGet("/context/{id:guid}", GetContextAsync).RequireScope(Scopes.Read);
+        api.MapPost("/context", CreateContextAsync).RequireScope(Scopes.Context);
+        api.MapDelete("/context/{id:guid}", DeleteContextAsync).RequireScope(Scopes.Context);
+
         // ─── Admin (owner only) ───────────────────────────────────────────────
         var admin = api.MapGroup("/admin").RequireOwner();
         admin.MapGet("/proposals", AdminListProposalsAsync);
@@ -287,6 +293,56 @@ public static class ApiEndpoints
             var p = await svc.CreateAsync(agentId, req.Op, req.Target, req.TargetId,
                 req.Payload, req.BaseVersion, ct);
             return Results.Json(new { id = p.Id, status = p.Status, preview_url = $"/proposals/{p.Id}" }, JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
+    }
+
+    // ─── context store (агенты пишут без апрувов) ────────────────────────────
+
+    private static async Task<IResult> ListContextAsync(HttpContext ctx, ContextStoreService svc,
+        Guid? project_id, Guid? agent_id, string? q, int? limit, CancellationToken ct)
+    {
+        try
+        {
+            var pr = P(ctx);
+            var items = await svc.ListAsync(project_id, pr.IsOwner ? agent_id : pr.Agent!.Id, q, limit ?? 100, ct);
+            return Results.Json(items.Select(x => x.ToDto()), JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
+    }
+
+    private static async Task<IResult> GetContextAsync(Guid id, ContextStoreService svc, CancellationToken ct)
+    {
+        try
+        {
+            var n = await svc.GetAsync(id, ct) ?? throw new KeyNotFoundException("context note not found");
+            return Results.Json(n.ToDto(), JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
+    }
+
+    private static async Task<IResult> CreateContextAsync(HttpContext ctx, ContextStoreService svc, CancellationToken ct)
+    {
+        var req = await Body<ApiTypes.ContextCreateRequest>(ctx);
+        if (req is null || string.IsNullOrWhiteSpace(req.Title))
+            return Err(422, "validation", "title required");
+        try
+        {
+            var pr = P(ctx);
+            var agentId = pr.IsOwner ? (Guid?)null : pr.Agent!.Id;
+            var n = await svc.CreateAsync(Actor(ctx), agentId, req.ProjectId, req.Title, req.Body ?? "", req.Tags, ct);
+            return Results.Json(n.ToDto(), JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
+    }
+
+    private static async Task<IResult> DeleteContextAsync(Guid id, HttpContext ctx, ContextStoreService svc, CancellationToken ct)
+    {
+        try
+        {
+            var pr = P(ctx);
+            var ok = await svc.DeleteAsync(Actor(ctx), id, pr.IsOwner ? (Guid?)null : pr.Agent!.Id, ct);
+            return ok ? Results.NoContent() : Err(404, "not_found");
         }
         catch (Exception ex) { return FromException(ex); }
     }
