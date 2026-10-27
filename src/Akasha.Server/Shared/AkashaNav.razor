@@ -1,11 +1,33 @@
-<MudAppBar Elevation="1">
+<MudAppBar Elevation="2" Color="Color.Primary">
+    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
+                   OnClick="@ToggleDrawer" Class="mr-2" Title="Меню" />
     <MudText Typo="Typo.h6" Color="Color.Inherit">✦ Akasha</MudText>
     <MudSpacer />
-    <MudButton Color="Color.Inherit" Href="/">Dashboard</MudButton>
-    <MudButton Color="Color.Inherit" Href="/search">Search</MudButton>
-    <MudButton Color="Color.Inherit" Href="/graph">Graph</MudButton>
-    <MudButton Color="Color.Inherit" Href="/approvals">Approvals</MudButton>
-    <MudButton Color="Color.Inherit" Href="/scripts">Scripts</MudButton>
-    <MudButton Color="Color.Inherit" Href="/agents">Agents</MudButton>
-    <MudButton Color="Color.Inherit" Href="/logout">Выйти</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+               StartIcon="@Icons.Material.Filled.Add" Href="/entries" Class="mr-2">Новая запись</MudButton>
+    <MudButton Variant="Variant.Text" Color="Color.Inherit" Size="Size.Small"
+               StartIcon="@Icons.Material.Filled.Logout" Href="/logout">Выйти</MudButton>
 </MudAppBar>
+
+<MudDrawer @bind-Open="_drawerOpen" Anchor="Anchor.Left" Elevation="3">
+    <MudDrawerHeader Class="px-4 py-4" Style="background:var(--mud-palette-appbar-background);">
+        <MudText Typo="Typo.h6" Color="Color.Inherit">✦ Akasha</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Inherit">Personal Context Vault</MudText>
+    </MudDrawerHeader>
+    <MudNavMenu Class="pa-2">
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Дашборд</MudNavLink>
+        <MudNavLink Href="/projects" Icon="@Icons.Material.Filled.Folder">Проекты</MudNavLink>
+        <MudNavLink Href="/search" Icon="@Icons.Material.Filled.Search">Поиск</MudNavLink>
+        <MudNavLink Href="/graph" Icon="@Icons.Material.Filled.Hub">Граф</MudNavLink>
+        <MudNavLink Href="/approvals" Icon="@Icons.Material.Filled.Approval">Апрувы</MudNavLink>
+        <MudNavLink Href="/scripts" Icon="@Icons.Material.Filled.Code">Скрипты</MudNavLink>
+        <MudNavLink Href="/agents" Icon="@Icons.Material.Filled.SmartToy">Агенты</MudNavLink>
+        <MudNavLink Href="/secrets" Icon="@Icons.Material.Filled.Lock">Секреты</MudNavLink>
+        <MudNavLink Href="/audit" Icon="@Icons.Material.Filled.History">Аудит</MudNavLink>
+    </MudNavMenu>
+</MudDrawer>
+
+@code {
+    private bool _drawerOpen = true;
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+}

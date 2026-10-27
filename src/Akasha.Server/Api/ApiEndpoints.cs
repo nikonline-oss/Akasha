@@ -408,7 +408,7 @@ public static class ApiEndpoints
     /// сохраняется случайный 32-байтовый ключ в data/master.key. Никогда не используется
     /// публичная константа — потеря ключа означает нечитаемость секретов, но не утечку.
     /// </summary>
-    private static byte[] MasterKey(IConfiguration cfg)
+    public static byte[] MasterKey(IConfiguration cfg)
     {
         var mk = cfg["AKASHA_MASTER_KEY"] ?? Environment.GetEnvironmentVariable("AKASHA_MASTER_KEY");
         if (!string.IsNullOrEmpty(mk))
