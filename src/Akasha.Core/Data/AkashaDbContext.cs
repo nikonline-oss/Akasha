@@ -28,6 +28,7 @@ public class AkashaDbContext : DbContext
     public DbSet<ScriptCacheItem> ScriptCache => Set<ScriptCacheItem>();
     public DbSet<MetaEntry> Meta => Set<MetaEntry>();
     public DbSet<AuditLog> AuditLog => Set<AuditLog>();
+    public DbSet<ContextNote> ContextNotes => Set<ContextNote>();
 
     public bool IsSqlite => Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
@@ -114,6 +115,15 @@ public class AkashaDbContext : DbContext
             else
                 e.Property(x => x.Embedding).HasColumnType("vector(384)");
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId);
+        });
+
+        // ─── ContextNote (хранилище контекста агентов, без апрувов) ────────────
+        b.Entity<ContextNote>(e =>
+        {
+            e.ToTable("context_notes");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Tags).HasColumnName("tags").HasConversion(strListConv).Metadata.SetValueComparer(strListCmp);
+            e.HasIndex(x => new { x.ProjectId, x.UpdatedAt });
         });
 
         // ─── EntryLink ────────────────────────────────────────────────────────

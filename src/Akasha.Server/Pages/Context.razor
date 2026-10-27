@@ -1,0 +1,73 @@
+@page "/context"
+@inject AkashaDbContext Db
+@inject ContextStoreService Contexts
+@inject ISnackbar Snackbar
+
+<PageTitle>Akasha — @Loc.T("page.context")</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.context")</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@Loc.T("context.hint")</MudText>
+
+@if (_notes.Count == 0)
+{
+    <MudText Typo="Typo.body2">@Loc.T("context.empty")</MudText>
+}
+else
+{
+    <MudList T="string">
+        @foreach (var n in _notes)
+        {
+            <MudListItem T="string" Icon="@Icons.Material.Filled.StickyNote2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle1">@n.Title</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @AgentName(n.AgentId) · @n.UpdatedAt.ToString("yyyy-MM-dd HH:mm")
+                        </MudText>
+                    </div>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   OnClick="@(() => Delete(n.Id))" />
+                </div>
+                <MudText Typo="Typo.body2" Class="mt-2" Style="white-space:pre-wrap">@n.Body</MudText>
+                @if (n.Tags.Count > 0)
+                {
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        @foreach (var t in n.Tags)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@t</MudChip>
+                        }
+                    </div>
+                }
+            </MudListItem>
+        }
+    </MudList>
+}
+
+@code {
+    private List<ContextNote> _notes = new();
+    private Dictionary<Guid, string> _agents = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _notes = await Contexts.ListAsync(null, null, null, 200);
+        var ids = _notes.Where(n => n.AgentId is not null).Select(n => n.AgentId!.Value).Distinct().ToList();
+        _agents = await Db.Agents.Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name);
+    }
+
+    private string AgentName(Guid? id) =>
+        id is Guid g && _agents.TryGetValue(g, out var name) ? name : "owner";
+
+    private async Task Delete(Guid id)
+    {
+        try
+        {
+            await Contexts.DeleteAsync("owner", id, null);
+            _notes = await Contexts.ListAsync(null, null, null, 200);
+            Snackbar.Add(Loc.T("context.deleted"), Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}
