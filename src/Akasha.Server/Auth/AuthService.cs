@@ -12,12 +12,14 @@ public record Principal
 {
     public bool IsOwner { get; init; }
     public Agent? Agent { get; init; }
-    public string Actor => IsOwner ? "owner" : Agent!.Id.ToString();
+    public string Actor => IsOwner ? "owner" : Agent?.Id.ToString() ?? "anonymous";
 
     public bool HasScope(string scope) => IsOwner || (Agent?.Scopes.Contains(scope) ?? false);
 
     public static Principal Owner() => new() { IsOwner = true };
     public static Principal FromAgent(Agent a) => new() { IsOwner = false, Agent = a };
+    /// <summary>Fail-closed principal без прав — до тех пор, пока middleware не установит владельца или агента.</summary>
+    public static Principal Anonymous() => new() { IsOwner = false, Agent = null };
 }
 
 public interface IAuthService

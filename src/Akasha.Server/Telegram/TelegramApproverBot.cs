@@ -25,17 +25,22 @@ public class TelegramApproverBot : BackgroundService
 
     public TelegramApproverBot(IConfiguration cfg) => _cfg = cfg;
 
+    /// <summary>Читает актуальное имя переменной (AKASHA_TELEGRAM_*) с fallback на устаревшее (AKASHA_TG_*).</summary>
+    private string? Tg(string primary, string legacy) =>
+        _cfg[primary] ?? Environment.GetEnvironmentVariable(primary)
+        ?? _cfg[legacy] ?? Environment.GetEnvironmentVariable(legacy);
+
     public void Start(IServiceProvider sp)
     {
         _sp = sp;
-        var token = _cfg["AKASHA_TG_BOT_TOKEN"] ?? Environment.GetEnvironmentVariable("AKASHA_TG_BOT_TOKEN");
+        var token = Tg("AKASHA_TELEGRAM_BOT_TOKEN", "AKASHA_TG_BOT_TOKEN");
         if (string.IsNullOrEmpty(token)) return; // bot disabled
         _client = new TelegramBotClient(token);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var chatId = _cfg["AKASHA_TG_CHAT_ID"] ?? Environment.GetEnvironmentVariable("AKASHA_TG_CHAT_ID");
+        var chatId = Tg("AKASHA_TELEGRAM_CHAT_ID", "AKASHA_TG_CHAT_ID");
         if (_client is null || string.IsNullOrEmpty(chatId)) return;
 
         _client.StartReceiving(Handler, (ITelegramBotClient _, Exception ex, CancellationToken __) => { Console.Error.WriteLine($"TG bot error: {ex.Message}"); return Task.CompletedTask; }, new ReceiverOptions(), stoppingToken);
@@ -56,7 +61,7 @@ public class TelegramApproverBot : BackgroundService
     public async Task NotifyPendingOnce(CancellationToken ct)
     {
         if (_client is null || _sp is null) return;
-        var chatId = _cfg["AKASHA_TG_CHAT_ID"];
+        var chatId = Tg("AKASHA_TELEGRAM_CHAT_ID", "AKASHA_TG_CHAT_ID");
         if (string.IsNullOrEmpty(chatId)) return;
 
         using var scope = _sp.CreateScope();
@@ -89,7 +94,7 @@ public class TelegramApproverBot : BackgroundService
 
     private async Task Handler(ITelegramBotClient client, Update update, CancellationToken ct)
     {
-        var chatId = _cfg["AKASHA_TG_CHAT_ID"];
+        var chatId = Tg("AKASHA_TELEGRAM_CHAT_ID", "AKASHA_TG_CHAT_ID");
         if (update.CallbackQuery is null || string.IsNullOrEmpty(chatId) ||
             update.CallbackQuery.From.Id.ToString() != chatId) return;
 

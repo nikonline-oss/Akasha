@@ -56,9 +56,8 @@ public class AuthMiddleware
     {
         var path = ctx.Request.Path.Value ?? "";
 
-        // публичные пути
-        if (!path.StartsWith("/api/v1") || path == "/healthz" ||
-            path.StartsWith("/api/v1/auth/login"))
+        // Публичные ресурсы: health, страница входа, статические ассеты, login-эндпоинт.
+        if (IsPublicPath(path))
         {
             await _next(ctx);
             return;
@@ -90,11 +89,16 @@ public class AuthMiddleware
 
         if (principal is null)
         {
-            await Fail(ctx, 401, "unauthorized", "no valid credentials");
+            if (IsApiPath(path))
+            {
+                await Fail(ctx, 401, "unauthorized", "no valid credentials");
+                return;
+            }
+            // Браузерный UI без сессии — на страницу входа.
+            ctx.Response.Redirect("/login");
             return;
         }
 
-        // sync endpoints: разрешены всем аутентифицированным (агент с любым скоупом — это device)
         // admin: только owner
         if (path.StartsWith("/api/v1/admin") && !principal.IsOwner)
         {
@@ -110,19 +114,51 @@ public class AuthMiddleware
             return;
         }
 
-        // rate limit (§6.4): агенты — 60 req/min; owner не ограничивается; export пропускается
+        // rate limit (§6.4): по эндпоинту, только для агентов; owner не ограничивается; export пропускается
         if (!principal.IsOwner && !ctx.Items.ContainsKey("skip_rate_limit"))
         {
-            if (!limiter.Allow(principal.Agent!.Id.ToString(), 60, TimeSpan.FromMinutes(1)))
+            var (max, window) = RateLimitFor(path);
+            if (!limiter.Allow(principal.Agent!.Id.ToString(), max, window))
             {
-                ctx.Response.Headers.RetryAfter = "30";
-                await Fail(ctx, 429, "rate_limited", "60 requests per minute exceeded");
+                ctx.Response.Headers.RetryAfter = ((int)window.TotalSeconds).ToString();
+                await Fail(ctx, 429, "rate_limited", $"{max} requests per {(int)window.TotalSeconds}s exceeded");
                 return;
             }
         }
 
         ctx.Items["principal"] = principal;
         await _next(ctx);
+    }
+
+    private static bool IsPublicPath(string path) =>
+        path == "/healthz" ||
+        path == "/login" ||
+        path == "/logout" ||
+        path == "/favicon.ico" ||
+        path.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_framework/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/lib/", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".css", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".map", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".webmanifest", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsApiPath(string path) =>
+        path.StartsWith("/api/v1", StringComparison.OrdinalIgnoreCase) || path == "/mcp";
+
+    private static (int Max, TimeSpan Window) RateLimitFor(string path)
+    {
+        if (path.StartsWith("/api/v1/proposals", StringComparison.OrdinalIgnoreCase))
+            return (10, TimeSpan.FromMinutes(1));
+        if (path.Equals("/api/v1/search", StringComparison.OrdinalIgnoreCase))
+            return (60, TimeSpan.FromMinutes(1));
+        if (path.Equals("/api/v1/query", StringComparison.OrdinalIgnoreCase))
+            return (30, TimeSpan.FromMinutes(1));
+        return (60, TimeSpan.FromMinutes(1));
     }
 
     private static bool IsLocalhost(HttpContext ctx)

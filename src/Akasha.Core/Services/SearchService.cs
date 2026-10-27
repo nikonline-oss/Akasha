@@ -31,10 +31,13 @@ public class SearchService
             var iq = _db.Entries.AsNoTracking().Where(e => e.DeletedAt == null);
             if (project is not null) iq = iq.Where(e => e.Project != null && e.Project.Slug == project);
             if (kind is not null) iq = iq.Where(e => e.Kind == kind);
-            if (tags is { Count: > 0 })
-                iq = iq.Where(e => tags.Any(t => e.Tags.Contains(t)));
             return iq;
         }
+
+        // Фильтр по тегам применяем в памяти: колонка tags хранится как сериализованный
+        // список (ValueConverter), и List<string>.Contains не транслируется провайдером.
+        var activeTags = tags?.Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>();
+        bool TagMatch(Entry e) => activeTags.Count == 0 || activeTags.Any(t => (e.Tags ?? new()).Contains(t));
 
         // ── FTS-ранк: пословное вхождение в title/body (simple tokenizer, EN/RU) ──
         var terms = query.ToLowerInvariant()
@@ -46,6 +49,7 @@ public class SearchService
         if (mode is "fts" or "hybrid")
         {
             var candidates = await Base().ToListAsync(ct);
+            if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
             foreach (var e in candidates)
             {
                 var hay = (e.Title + " " + e.Body).ToLowerInvariant();
@@ -66,6 +70,7 @@ public class SearchService
         {
             var qv = _embeddings.Embed(query);
             var candidates = await Base().ToListAsync(ct);
+            if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
             foreach (var e in candidates)
             {
                 if (e.Embedding is null || e.Embedding.Length == 0) continue;

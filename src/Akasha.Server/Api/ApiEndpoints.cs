@@ -400,11 +400,39 @@ public static class ApiEndpoints
         }), JsonOpts);
     }
 
+    private static readonly object MasterKeyLock = new();
+    private static byte[]? _masterKeyCache;
+
+    /// <summary>
+    /// Ключ шифрования секретов. Явный AKASHA_MASTER_KEY — приоритет; иначе генерируется и
+    /// сохраняется случайный 32-байтовый ключ в data/master.key. Никогда не используется
+    /// публичная константа — потеря ключа означает нечитаемость секретов, но не утечку.
+    /// </summary>
     private static byte[] MasterKey(IConfiguration cfg)
     {
         var mk = cfg["AKASHA_MASTER_KEY"] ?? Environment.GetEnvironmentVariable("AKASHA_MASTER_KEY");
-        if (string.IsNullOrEmpty(mk)) mk = "akasha-dev-master-key"; // portable/dev fallback
-        return SecretCrypto.DeriveKeyFromMasterKey(mk);
+        if (!string.IsNullOrEmpty(mk))
+            return SecretCrypto.DeriveKeyFromMasterKey(mk);
+
+        lock (MasterKeyLock)
+        {
+            if (_masterKeyCache is not null) return _masterKeyCache;
+            var dir = Environment.GetEnvironmentVariable("AKASHA_DATA_DIR") ?? "data";
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "master.key");
+            if (File.Exists(path))
+            {
+                _masterKeyCache = Convert.FromBase64String(File.ReadAllText(path).Trim());
+            }
+            else
+            {
+                var key = new byte[32];
+                System.Security.Cryptography.RandomNumberGenerator.Fill(key);
+                File.WriteAllText(path, Convert.ToBase64String(key));
+                _masterKeyCache = key;
+            }
+            return _masterKeyCache;
+        }
     }
 
     private static async Task<IResult> AdminListSecretsAsync(AkashaDbContext db, HttpContext ctx, Guid? project, CancellationToken ct)
@@ -420,22 +448,30 @@ public static class ApiEndpoints
         var req = await Body<ApiTypes.SecretRequest>(ctx);
         if (req is null || string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrEmpty(req.Value))
             return Err(422, "validation", "name and value required");
-        var s = new Secret
+        try
         {
-            ProjectId = req.ProjectId, Name = req.Name, Note = req.Note,
-            ValueEncrypted = SecretCrypto.Encrypt(req.Value, MasterKey(cfg)),
-        };
-        db.Secrets.Add(s);
-        await db.SaveChangesAsync(ct);
-        await audit.LogAsync(Actor(ctx), "create", "secrets", s.Id, null, ct); // diff = null, значение в аудит не пишется
-        return Results.Json(s.ToDto(), JsonOpts);
+            var s = new Secret
+            {
+                ProjectId = req.ProjectId, Name = req.Name, Note = req.Note,
+                ValueEncrypted = SecretCrypto.Encrypt(req.Value, MasterKey(cfg)),
+            };
+            db.Secrets.Add(s);
+            await db.SaveChangesAsync(ct);
+            await audit.LogAsync(Actor(ctx), "create", "secrets", s.Id, null, ct); // diff = null, значение в аудит не пишется
+            return Results.Json(s.ToDto(), JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
     }
 
     private static async Task<IResult> AdminRevealSecretAsync(Guid id, AkashaDbContext db, AuditService audit, IConfiguration cfg, HttpContext ctx, CancellationToken ct)
     {
         var s = await db.Secrets.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException("secret not found");
         await audit.LogAsync(Actor(ctx), "reveal", "secrets", s.Id, null, ct);
-        return Results.Json(new { id = s.Id, name = s.Name, value = SecretCrypto.Decrypt(s.ValueEncrypted, MasterKey(cfg)) }, JsonOpts);
+        try
+        {
+            return Results.Json(new { id = s.Id, name = s.Name, value = SecretCrypto.Decrypt(s.ValueEncrypted, MasterKey(cfg)) }, JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
     }
 
     private static async Task<IResult> AdminDeleteSecretAsync(Guid id, AkashaDbContext db, AuditService audit, HttpContext ctx, CancellationToken ct)

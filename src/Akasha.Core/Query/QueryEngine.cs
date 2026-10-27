@@ -195,26 +195,22 @@ public class QueryEngine
             {
                 case "project": // sugar: slug проекта
                 {
-                    var slug = ResolveString(prop.Value, p);
-                    if (slug is not null) iq = iq.Where(e => e.Project != null && e.Project.Slug == slug);
+                    iq = ApplyProjectSlug(iq, prop.Value, p);
                     break;
                 }
                 case "project_id":
                 {
-                    var v = ResolveGuid(prop.Value, p);
-                    if (v is not null) iq = iq.Where(e => e.ProjectId == v);
+                    iq = ApplyProjectId(iq, prop.Value, p);
                     break;
                 }
                 case "id":
                 {
-                    var v = ResolveGuid(prop.Value, p);
-                    if (v is not null) iq = iq.Where(e => e.Id == v);
+                    iq = ApplyEntryId(iq, prop.Value, p);
                     break;
                 }
                 case "kind":
                 {
-                    var v = ResolveString(prop.Value, p);
-                    if (v is not null) iq = iq.Where(e => e.Kind == v);
+                    iq = ApplyKind(iq, prop.Value, p);
                     break;
                 }
                 case "title":
@@ -277,6 +273,142 @@ public class QueryEngine
             }
         }
         return iq;
+    }
+
+    private static IQueryable<Entry> ApplyProjectSlug(IQueryable<Entry> iq, JsonElement cond, JsonElement p)
+    {
+        if (cond.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+        {
+            var v = ResolveScalar(cond, p);
+            return v is null ? iq : iq.Where(e => e.Project != null && e.Project.Slug == v);
+        }
+        if (cond.ValueKind != JsonValueKind.Object) return iq;
+        foreach (var op in cond.EnumerateObject())
+        {
+            switch (op.Name)
+            {
+                case "$eq":
+                {
+                    var v = ResolveScalar(op.Value, p);
+                    if (v is not null) iq = iq.Where(e => e.Project != null && e.Project.Slug == v);
+                    break;
+                }
+                case "$ne":
+                {
+                    var v = ResolveScalar(op.Value, p);
+                    if (v is not null) iq = iq.Where(e => e.Project != null && e.Project.Slug != v);
+                    break;
+                }
+                case "$in":
+                {
+                    var vals = ToStrList(op.Value, p);
+                    if (vals.Count > 0) iq = iq.Where(e => e.Project != null && vals.Contains(e.Project.Slug));
+                    break;
+                }
+                default:
+                    throw new QueryException($"Unknown operator '{op.Name}' for 'project'.");
+            }
+        }
+        return iq;
+    }
+
+    private static IQueryable<Entry> ApplyProjectId(IQueryable<Entry> iq, JsonElement cond, JsonElement p)
+    {
+        if (cond.ValueKind == JsonValueKind.Object && cond.TryGetProperty("$in", out var inEl))
+        {
+            var ids = ToGuidList(inEl, p);
+            if (ids.Count > 0) iq = iq.Where(e => e.ProjectId != null && ids.Contains(e.ProjectId.Value));
+            return iq;
+        }
+        if (cond.ValueKind == JsonValueKind.Object && cond.TryGetProperty("$nin", out var ninEl))
+        {
+            var ids = ToGuidList(ninEl, p);
+            if (ids.Count > 0) iq = iq.Where(e => e.ProjectId != null && !ids.Contains(e.ProjectId.Value));
+            return iq;
+        }
+        var v = ResolveGuid(cond, p);
+        return v is not null ? iq.Where(e => e.ProjectId == v) : iq;
+    }
+
+    private static IQueryable<Entry> ApplyEntryId(IQueryable<Entry> iq, JsonElement cond, JsonElement p)
+    {
+        if (cond.ValueKind == JsonValueKind.Object && cond.TryGetProperty("$in", out var inEl))
+        {
+            var ids = ToGuidList(inEl, p);
+            if (ids.Count > 0) iq = iq.Where(e => ids.Contains(e.Id));
+            return iq;
+        }
+        if (cond.ValueKind == JsonValueKind.Object && cond.TryGetProperty("$nin", out var ninEl))
+        {
+            var ids = ToGuidList(ninEl, p);
+            if (ids.Count > 0) iq = iq.Where(e => !ids.Contains(e.Id));
+            return iq;
+        }
+        var v = ResolveGuid(cond, p);
+        return v is not null ? iq.Where(e => e.Id == v) : iq;
+    }
+
+    private static IQueryable<Entry> ApplyKind(IQueryable<Entry> iq, JsonElement cond, JsonElement p)
+    {
+        if (cond.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+        {
+            var v = ResolveScalar(cond, p);
+            return v is null ? iq : iq.Where(e => e.Kind == v);
+        }
+        if (cond.ValueKind != JsonValueKind.Object) return iq;
+        foreach (var op in cond.EnumerateObject())
+        {
+            switch (op.Name)
+            {
+                case "$eq":
+                {
+                    var v = ResolveScalar(op.Value, p);
+                    if (v is not null) iq = iq.Where(e => e.Kind == v);
+                    break;
+                }
+                case "$ne":
+                {
+                    var v = ResolveScalar(op.Value, p);
+                    if (v is not null) iq = iq.Where(e => e.Kind != v);
+                    break;
+                }
+                case "$in":
+                {
+                    var vals = ToStrList(op.Value, p);
+                    if (vals.Count > 0) iq = iq.Where(e => vals.Contains(e.Kind));
+                    break;
+                }
+                case "$nin":
+                {
+                    var vals = ToStrList(op.Value, p);
+                    if (vals.Count > 0) iq = iq.Where(e => !vals.Contains(e.Kind));
+                    break;
+                }
+                default:
+                    throw new QueryException($"Unknown operator '{op.Name}' for 'kind'.");
+            }
+        }
+        return iq;
+    }
+
+    private static List<string> ToStrList(JsonElement v, JsonElement p)
+    {
+        if (v.ValueKind == JsonValueKind.Array)
+            return v.EnumerateArray().Select(x => ResolveScalar(x, p)).Where(s => s is not null).Select(s => s!).ToList();
+        var s = ResolveScalar(v, p);
+        return s is null ? new List<string>() : new List<string> { s };
+    }
+
+    private static List<Guid> ToGuidList(JsonElement v, JsonElement p)
+    {
+        var ids = new List<Guid>();
+        if (v.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var x in v.EnumerateArray())
+                if (Guid.TryParse(ResolveScalar(x, p), out var g)) ids.Add(g);
+        }
+        else if (Guid.TryParse(ResolveScalar(v, p), out var g0)) ids.Add(g0);
+        return ids;
     }
 
     private static IQueryable<Entry> ApplyTags(IQueryable<Entry> iq, JsonElement cond, JsonElement p)
@@ -361,18 +493,49 @@ public class QueryEngine
     private static IQueryable<Entry> ApplyDateCompare(IQueryable<Entry> iq, JsonElement cond,
         JsonElement p, System.Linq.Expressions.Expression<Func<Entry, DateTimeOffset>> selector)
     {
-        var (op, raw) = ExtractOp(cond, p);
-        if (raw is null) return iq;
-        var dt = ParseDateOrRelative(raw);
-        return op switch
+        // Объект вида {"$op": value} — по одному оператору на ключ; скаляр = $eq.
+        if (cond.ValueKind == JsonValueKind.Object)
         {
-            "$eq" => iq.Where(BuildDateLambda(selector, x => x == dt)),
-            "$gt" => iq.Where(BuildDateLambda(selector, x => x > dt)),
-            "$gte" => iq.Where(BuildDateLambda(selector, x => x >= dt)),
-            "$lt" => iq.Where(BuildDateLambda(selector, x => x < dt)),
-            "$lte" => iq.Where(BuildDateLambda(selector, x => x <= dt)),
-            _ => iq
-        };
+            foreach (var op in cond.EnumerateObject())
+            {
+                var raw = ResolveDateValue(op.Value, p);
+                if (raw is null) continue;
+                var dt = ParseDateOrRelative(raw);
+                iq = op.Name switch
+                {
+                    "$eq" => iq.Where(BuildDateLambda(selector, x => x == dt)),
+                    "$gt" => iq.Where(BuildDateLambda(selector, x => x > dt)),
+                    "$gte" => iq.Where(BuildDateLambda(selector, x => x >= dt)),
+                    "$lt" => iq.Where(BuildDateLambda(selector, x => x < dt)),
+                    "$lte" => iq.Where(BuildDateLambda(selector, x => x <= dt)),
+                    // {"$relative":"-7d"} без обёртки = «в пределах последних N» (>= now - N)
+                    "$relative" => iq.Where(BuildDateLambda(selector, x => x >= dt)),
+                    _ => throw new QueryException($"Unknown date operator '{op.Name}'.")
+                };
+            }
+            return iq;
+        }
+
+        var raw0 = ResolveDateValue(cond, p);
+        if (raw0 is not null)
+        {
+            var dt = ParseDateOrRelative(raw0);
+            iq = iq.Where(BuildDateLambda(selector, x => x == dt));
+        }
+        return iq;
+    }
+
+    /// <summary>Разворачивает вложенные $relative / $param внутри значения оператора сравнения дат.</summary>
+    private static string? ResolveDateValue(JsonElement v, JsonElement p)
+    {
+        if (v.ValueKind == JsonValueKind.Object)
+        {
+            if (v.TryGetProperty("$relative", out var rel) && rel.ValueKind == JsonValueKind.String)
+                return rel.GetString();
+            if (v.TryGetProperty("$param", out var pn) && pn.ValueKind == JsonValueKind.String)
+                return ResolveScalar(v, p);
+        }
+        return ResolveScalar(v, p);
     }
 
     private static IQueryable<Entry> ApplyNullCheck(IQueryable<Entry> iq, JsonElement cond,
@@ -434,8 +597,7 @@ public class QueryEngine
                     }
                     case "status":
                     {
-                        var val = ResolveString(prop.Value, p);
-                        if (val is not null) iq = iq.Where(x => x.Status == val);
+                        iq = ApplyProjectStatus(iq, prop.Value, p);
                         break;
                     }
                     case "name":
@@ -473,6 +635,49 @@ public class QueryEngine
             return full.Where(kv => select.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
         }).ToList();
         return (rows, rows.Count);
+    }
+
+    private static IQueryable<Project> ApplyProjectStatus(IQueryable<Project> iq, JsonElement cond, JsonElement p)
+    {
+        if (cond.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+        {
+            var v = ResolveScalar(cond, p);
+            return v is null ? iq : iq.Where(x => x.Status == v);
+        }
+        if (cond.ValueKind != JsonValueKind.Object) return iq;
+        foreach (var op in cond.EnumerateObject())
+        {
+            switch (op.Name)
+            {
+                case "$eq":
+                {
+                    var v = ResolveScalar(op.Value, p);
+                    if (v is not null) iq = iq.Where(x => x.Status == v);
+                    break;
+                }
+                case "$ne":
+                {
+                    var v = ResolveScalar(op.Value, p);
+                    if (v is not null) iq = iq.Where(x => x.Status != v);
+                    break;
+                }
+                case "$in":
+                {
+                    var vals = ToStrList(op.Value, p);
+                    if (vals.Count > 0) iq = iq.Where(x => vals.Contains(x.Status));
+                    break;
+                }
+                case "$nin":
+                {
+                    var vals = ToStrList(op.Value, p);
+                    if (vals.Count > 0) iq = iq.Where(x => !vals.Contains(x.Status));
+                    break;
+                }
+                default:
+                    throw new QueryException($"Unknown operator '{op.Name}' for 'status'.");
+            }
+        }
+        return iq;
     }
 
     // ─── entry_links ──────────────────────────────────────────────────────────
@@ -629,9 +834,17 @@ public class QueryEngine
         if (v.ValueKind == JsonValueKind.Object && v.TryGetProperty("$param", out var pn))
         {
             var name = pn.GetString();
-            return name is not null && p.TryGetProperty(name, out var actual)
-                ? actual.ValueKind == JsonValueKind.String ? actual.GetString() : actual.GetRawText()
-                : null;
+            if (name is not null && p.TryGetProperty(name, out var actual))
+                return actual.ValueKind == JsonValueKind.String ? actual.GetString() : actual.GetRawText();
+            // $default — значение по умолчанию, если параметр не передан
+            if (v.TryGetProperty("$default", out var dv))
+                return dv.ValueKind switch
+                {
+                    JsonValueKind.String => dv.GetString(),
+                    JsonValueKind.Number => dv.GetRawText(),
+                    _ => dv.ToString()
+                };
+            return null;
         }
         return v.ValueKind switch
         {
@@ -671,6 +884,15 @@ public class QueryEngine
     {
         if (cond.ValueKind == JsonValueKind.Undefined) return def;
         if (cond.ValueKind == JsonValueKind.Number && cond.TryGetInt32(out var n)) return n;
+        if (cond.ValueKind == JsonValueKind.Object && cond.TryGetProperty("$param", out var pn) && pn.ValueKind == JsonValueKind.String)
+        {
+            var name = pn.GetString()!;
+            if (p.TryGetProperty(name, out var actual) && actual.ValueKind == JsonValueKind.Number && actual.TryGetInt32(out var pv))
+                return pv;
+            if (cond.TryGetProperty("$default", out var dv) && dv.ValueKind == JsonValueKind.Number && dv.TryGetInt32(out var dn))
+                return dn;
+            return def;
+        }
         var s = ResolveString(cond, p);
         return int.TryParse(s, out var parsed) ? parsed : def;
     }

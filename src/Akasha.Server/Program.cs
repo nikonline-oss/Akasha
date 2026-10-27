@@ -28,6 +28,12 @@ app.UseRouting();
 app.UseMiddleware<AuthMiddleware>();
 app.MapAkashaApi();
 app.MapMcp();
+app.MapGet("/login", () => Results.Content(LoginPage.Html, "text/html"));
+app.MapGet("/logout", (HttpContext ctx) =>
+{
+    ctx.Response.Cookies.Delete(ApiEndpoints.SessionCookie);
+    return Results.Redirect("/login");
+});
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
