@@ -103,6 +103,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<QueryEngine>();
         services.AddSingleton<RateLimiter>();
         services.AddSingleton<SyncClient>();
+        // FusionCache: L1-кэш in-memory (инвалидация по data_version в ключе + TTL скрипта).
+        services.AddFusionCache();
 
         services.AddScoped<AuditService>();
         services.AddScoped<MetaService>();

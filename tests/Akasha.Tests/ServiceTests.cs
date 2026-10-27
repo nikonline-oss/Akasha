@@ -4,6 +4,7 @@ using Akasha.Core.Query;
 using Akasha.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using ZiggyCreatures.Caching.Fusion;
 
 namespace Akasha.Tests;
 
@@ -97,7 +98,7 @@ public class ScriptServiceTests : IDisposable
         var engine = new QueryEngine();
         var meta = new MetaService(_t.Factory);
         var audit = new AuditService(_t.Factory);
-        _svc = new ScriptService(_t.Db, engine, meta, audit);
+        _svc = new ScriptService(_t.Db, engine, meta, audit, new FusionCache(new FusionCacheOptions()));
     }
 
     public void Dispose() => _t.Dispose();
