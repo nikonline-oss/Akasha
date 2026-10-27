@@ -7,6 +7,8 @@
 @inject QueryEngine Engine
 @inject QueryAssistService Ai
 @inject ISnackbar Snackbar
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
 
 <MudText Typo="Typo.h5" GutterBottom="true">Скрипты (Structured JSON Queries)</MudText>
 
@@ -168,8 +170,8 @@
                 <MudTextField @bind-Value="_editDesc" Label="Описание" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_editQuery" Label="Query (JSON)" Lines="12" Variant="Variant.Outlined"
-                              Style="font-family: monospace;" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Query (JSON)</MudText>
+                <div id="script-query-editor" style="height:320px; border:1px solid #ddd; border-radius:4px;"></div>
             </MudItem>
             <MudItem xs="12">
                 <MudTextField @bind-Value="_editTransform" Label="JMESPath transform (необяз.)" Variant="Variant.Outlined" />
@@ -219,6 +221,8 @@
     private Guid? _editId;
     private string _editName = "", _editSlug = "", _editDesc = "", _editQuery = "{}";
     private string _editFormat = "table", _editTtl = "300", _editTransform = "";
+    private DotNetObjectReference<Scripts>? _monacoRef;
+    private bool _monacoInit;
 
     protected override async Task OnInitializedAsync()
     {
@@ -358,7 +362,35 @@
         _editTransform = s.Transform ?? "";
         _editFormat = s.OutputFormat;
         _editTtl = s.CacheTtl.ToString();
+        _monacoInit = false;
         _editOpen = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_editOpen && !_monacoInit)
+        {
+            _monacoInit = true;
+            _monacoRef ??= DotNetObjectReference.Create(this);
+            try
+            {
+                await JsRuntime.InvokeVoidAsync("akashaMonaco.create", "script-query-editor", _editQuery, _monacoRef);
+            }
+            catch (InvalidOperationException)
+            {
+                // prerender: JS недоступен, интерактивный рендер повторит вызов.
+                _monacoInit = false;
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OnEditorChanged(string value) => _editQuery = value;
+
+    public async ValueTask DisposeAsync()
+    {
+        _monacoRef?.Dispose();
+        await ValueTask.CompletedTask;
     }
 
     private async Task SaveEdit()
