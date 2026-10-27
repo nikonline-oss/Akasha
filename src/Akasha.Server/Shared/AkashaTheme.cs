@@ -19,6 +19,25 @@ public static class AkashaTheme
             Success = "#2E7D32",
             Error = "#B3261E",
         },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#B388FF",        // светлый фиолетовый
+            Secondary = "#FFD700",      // золотой
+            Tertiary = "#8E6BD8",
+            AppbarBackground = "#241243",
+            DrawerBackground = "#1A0B2E",
+            Background = "#1A0B2E",
+            Surface = "#241243",
+            Success = "#66BB6A",
+            Error = "#EF5350",
+        },
         LayoutProperties = new LayoutProperties { DefaultBorderRadius = "10px" },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography
+            {
+                FontFamily = new[] { "Segoe UI", "Roboto", "system-ui", "sans-serif" },
+            },
+        },
     };
 }
