@@ -49,9 +49,14 @@
 <MudPaper Class="pa-4 mt-4">
     <MudText Typo="Typo.h6" GutterBottom="true">@Loc.T("settings.maintenance")</MudText>
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@Loc.T("settings.embeddingsHint")</MudText>
-    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RecomputeEmbeddings" Disabled="@_recomputing">
-        @(_recomputing ? Loc.T("settings.recomputing") : Loc.T("settings.recompute"))
-    </MudButton>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RecomputeEmbeddings" Disabled="@_recomputing">
+            @(_recomputing ? Loc.T("settings.recomputing") : Loc.T("settings.recompute"))
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="RecomputeAllEmbeddings" Disabled="@_recomputing">
+            @(_recomputing ? Loc.T("settings.recomputing") : Loc.T("settings.recomputeAll"))
+        </MudButton>
+    </MudStack>
 </MudPaper>
 
 @code {
@@ -88,6 +93,26 @@
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    /// <summary>Пересчитать ВСЕ эмбеддинги (после смены модели: старое пространство несовместимо с новым).</summary>
+    private async Task RecomputeAllEmbeddings()
+    {
+        _recomputing = true;
+        try
+        {
+            var ids = await Db.Entries.Where(e => e.DeletedAt == null).Select(e => e.Id).ToListAsync();
+            foreach (var id in ids) Queue.Enqueue(id);
+            Snackbar.Add(Loc.T("settings.recomputeQueued", ids.Count), Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _recomputing = false;
+        }
+    }
 
     private async Task SetLanguage(string lang)
     {

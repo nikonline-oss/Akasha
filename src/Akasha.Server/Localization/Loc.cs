@@ -48,6 +48,7 @@ public static class Loc
         ["settings.maintenance"] = "Обслуживание",
         ["settings.embeddingsHint"] = "Пересчитать эмбеддинги для записей без них (после обновления или смены модели).",
         ["settings.recompute"] = "Пересчитать эмбеддинги",
+        ["settings.recomputeAll"] = "Пересчитать все",
         ["settings.recomputing"] = "Пересчёт…",
         ["settings.recomputeQueued"] = "В очередь добавлено записей: {0}",
         // общее
@@ -253,6 +254,7 @@ public static class Loc
         ["settings.maintenance"] = "Maintenance",
         ["settings.embeddingsHint"] = "Recompute embeddings for entries that lack them (after an upgrade or a model change).",
         ["settings.recompute"] = "Recompute embeddings",
+        ["settings.recomputeAll"] = "Recompute all",
         ["settings.recomputing"] = "Recomputing…",
         ["settings.recomputeQueued"] = "Queued {0} entries",
         // common
