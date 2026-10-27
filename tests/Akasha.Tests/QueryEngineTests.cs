@@ -157,4 +157,46 @@ public class QueryEngineTests : IDisposable
         var result = JmesTransform.Apply(rows, "[].title");
         Assert.Equal("X", ((System.Text.Json.JsonElement)result!).EnumerateArray().First().GetString());
     }
+
+    [Fact]
+    public async Task Where_Kind_In_Operator()
+    {
+        _t.SeedEntry(title: "a", kind: "note");
+        _t.SeedEntry(title: "b", kind: "decision");
+        var r = await Run("""{"from":"entries","where":{"kind":{"$in":["note","decision"]}},"select":["title"]}""");
+        Assert.Equal(2, r.Rows.Count);
+    }
+
+    [Fact]
+    public async Task Where_Kind_Ne_Operator()
+    {
+        _t.SeedEntry(title: "a", kind: "note");
+        _t.SeedEntry(title: "b", kind: "decision");
+        var r = await Run("""{"from":"entries","where":{"kind":{"$ne":"note"}},"select":["title"]}""");
+        Assert.Single(r.Rows);
+        Assert.Equal("b", r.Rows[0]["title"]);
+    }
+
+    [Fact]
+    public async Task Where_UpdatedAt_Relative_Gte()
+    {
+        var p = _t.SeedProject();
+        _t.SeedEntry(p, "fresh", kind: "note");
+        var old = _t.SeedEntry(p, "old", kind: "note");
+        old.UpdatedAt = DateTimeOffset.UtcNow.AddDays(-30);
+        _t.Db.SaveChanges();
+
+        var r = await Run("""{"from":"entries","where":{"updated_at":{"$gte":{"$relative":"-7d"}}},"select":["title"]}""");
+        Assert.Single(r.Rows);
+        Assert.Equal("fresh", r.Rows[0]["title"]);
+    }
+
+    [Fact]
+    public async Task Limit_From_Param_With_Default()
+    {
+        _t.SeedEntry(title: "a");
+        _t.SeedEntry(title: "b");
+        var r = await Run("""{"from":"entries","limit":{"$param":"lim","$default":1},"select":["title"]}""");
+        Assert.Single(r.Rows);
+    }
 }

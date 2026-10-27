@@ -100,7 +100,7 @@ public static class ServiceCollectionExtensions
             var http = sp.GetRequiredService<IHttpContextAccessor>().HttpContext;
             return http is not null && http.Items["principal"] is Akasha.Server.Auth.Principal p
                 ? p
-                : Akasha.Server.Auth.Principal.Owner();
+                : Akasha.Server.Auth.Principal.Anonymous();
         });
 
         // фоновый worker генерации эмбеддингов

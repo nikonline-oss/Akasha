@@ -253,4 +253,16 @@ public class SearchServiceTests : IDisposable
         var h2 = ContentHash.Of(e);
         Assert.NotEqual(h1, h2);
     }
+
+    [Fact]
+    public async Task Search_Filters_By_Tags()
+    {
+        var proj = _t.SeedProject("webapp");
+        _t.SeedEntry(proj, "Kubernetes auth", "body", tags: new() { "auth" });
+        _t.SeedEntry(proj, "Kubernetes networking", "body", tags: new() { "net" });
+
+        var hits = await _svc.SearchAsync("kubernetes", tags: new List<string> { "auth" });
+        Assert.Single(hits);
+        Assert.Contains(hits, h => h.Title.Contains("auth"));
+    }
 }

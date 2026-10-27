@@ -105,6 +105,27 @@ public class SyncServiceTests : IDisposable
                 new("secrets", "upsert", Json.Obj("{}"), DateTimeOffset.UtcNow)
             }));
     }
+
+    [Fact]
+    public async Task Push_Conflict_Creates_Conflict_Proposal()
+    {
+        var p = _t.SeedProject();
+        var e = _t.SeedEntry(p, "Original", "v1 body");
+        e.StateHash = ContentHash.Of(e);
+        await _t.Db.SaveChangesAsync();
+
+        var newer = DateTimeOffset.UtcNow.AddMinutes(5);
+        var change = new SyncService.SyncChange("entries", "upsert",
+            Json.Obj($$"""{"id":"{{e.Id}}","title":"Portable edit","body":"conflicting body","kind":"note","tags":[],"state_hash":"different-hash","updated_at":"{{newer:O}}"}"""),
+            newer);
+
+        var res = await _svc.PushAsync([change], "device-3");
+
+        Assert.Equal(0, res.Applied);
+        Assert.Contains(res.ConflictProposals, id => id != Guid.Empty);
+        var reloaded = await _t.Db.Entries.FirstAsync(x => x.Id == e.Id);
+        Assert.Equal("Original", reloaded.Title); // серверная версия не перезаписана молча
+    }
 }
 
 public class ExportImportTests : IDisposable

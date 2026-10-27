@@ -187,6 +187,34 @@ public class SyncService
         if (local.UpdatedAt >= remoteUpdated)
             return (0, 1, null);
 
+        // Конфликт: обе стороны изменили одну запись (разные state_hash) → conflict-proposal,
+        // а не молчаливая перезапись серверной версии (§9.3 ТЗ / sync-protocol.md §3).
+        if (remoteHash is not null && local.StateHash is not null &&
+            !string.Equals(remoteHash, local.StateHash, StringComparison.Ordinal))
+        {
+            var proposal = new Proposal
+            {
+                AgentId = null,
+                Op = ProposalOp.Conflict,
+                Target = ProposalTarget.Entries,
+                TargetId = local.Id,
+                Payload = JsonSerializer.SerializeToElement(new
+                {
+                    server = new
+                    {
+                        id = local.Id, title = local.Title, body = local.Body, kind = local.Kind,
+                        tags = local.Tags, updated_at = local.UpdatedAt, state_hash = local.StateHash,
+                    },
+                    portable = data,
+                }),
+                Status = ProposalStatus.Pending,
+            };
+            _db.Proposals.Add(proposal);
+            await _audit.LogAsync(deviceId, "conflict", "entries", local.Id,
+                JsonSerializer.Serialize(new { remote_hash = remoteHash, local_hash = local.StateHash }), ct);
+            return (0, 0, proposal.Id);
+        }
+
         ApplyEntryFields(local, data);
         local.UpdatedAt = remoteUpdated;
         local.Version += 1;
