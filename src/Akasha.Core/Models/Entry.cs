@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Pgvector;
 
 namespace Akasha.Core.Models;
 
@@ -22,7 +23,7 @@ public class Entry
     public string? SourceUrl { get; set; }
     public JsonElement? Metadata { get; set; }
     /// <summary>Embedding BGE-Micro-V2 (384 dim). Провайдер БД отображает в vector (PG) / TEXT (SQLite).</summary>
-    public float[]? Embedding { get; set; }
+    public Vector? Embedding { get; set; }
     public int Version { get; set; } = 1;
     public string? CreatedBy { get; set; }             // 'owner' | agent_id
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

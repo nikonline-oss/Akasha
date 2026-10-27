@@ -3,6 +3,7 @@ using Akasha.Core.Data;
 using Akasha.Core.Models;
 using Akasha.Core.Query;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace Akasha.Core.Services;
 
@@ -207,7 +208,7 @@ public class ProposalService
                     e.ProjectId = await ResolveProjectId(projSlug, ct)
                         ?? throw new ValidationException($"unknown project '{projSlug}'.");
                 e.CreatedBy = p.AgentId?.ToString();
-                e.Embedding = _embeddings.Embed(e.Title + "\n" + e.Body);
+                e.Embedding = new Vector(_embeddings.Embed(e.Title + "\n" + e.Body));
                 e.StateHash = ContentHash.Of(e);
                 _db.Entries.Add(e);
                 p.Payload = Normalize(JsonSerializer.SerializeToElement(new { id = e.Id }));
@@ -235,7 +236,7 @@ public class ProposalService
                     e.ProjectId = pg;
                 e.Version += 1;
                 e.UpdatedAt = DateTimeOffset.UtcNow;
-                e.Embedding = _embeddings.Embed(e.Title + "\n" + e.Body);
+                e.Embedding = new Vector(_embeddings.Embed(e.Title + "\n" + e.Body));
                 e.StateHash = ContentHash.Of(e);
                 break;
             }

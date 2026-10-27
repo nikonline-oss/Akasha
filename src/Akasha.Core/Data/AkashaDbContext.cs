@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Text.Json;
 using Akasha.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Pgvector;
 
 namespace Akasha.Core.Data;
 
@@ -63,13 +65,9 @@ public class AkashaDbContext : DbContext
             (a, c) => (a ?? new()).SequenceEqual(c ?? new()),
             v => v.Aggregate(0, (acc, x) => HashCode.Combine(acc, x.GetHashCode())),
             v => v.ToList());
-        var embConv = new ValueConverter<float[]?, string?>(
-            e => e == null ? null : string.Join(',', e.Select(f => f.ToString("R"))),
-            s => ParseFloatArray(s));
-        var embCmp = new ValueComparer<float[]>(
-            (a, c) => (a ?? Array.Empty<float>()).SequenceEqual(c ?? Array.Empty<float>()),
-            v => v.Aggregate(0, (acc, x) => HashCode.Combine(acc, x.GetHashCode())),
-            v => (float[])v.Clone());
+        var embConv = new ValueConverter<Vector?, string?>(
+            v => v == null ? null : string.Join(',', v.ToArray().Select(f => f.ToString("R", CultureInfo.InvariantCulture))),
+            s => string.IsNullOrEmpty(s) ? null : new Vector(s.Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray()));
 
         // ─── Owner ────────────────────────────────────────────────────────────
         b.Entity<Owner>(e =>
@@ -107,7 +105,10 @@ public class AkashaDbContext : DbContext
             // Нужна для переводимых LIKE-фильтров по тегам (QueryEngine.TagPredicate).
             e.Property(x => x.TagsRaw).HasColumnName("tags_raw").HasColumnType("TEXT");
             e.Property(x => x.Metadata).HasConversion(jsonNullableConv);
-            e.Property(x => x.Embedding).HasConversion(embConv).Metadata.SetValueComparer(embCmp);
+            if (IsSqlite)
+                e.Property(x => x.Embedding).HasConversion(embConv);
+            else
+                e.Property(x => x.Embedding).HasColumnType("vector(384)");
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId);
         });
 
@@ -177,9 +178,6 @@ public class AkashaDbContext : DbContext
 
     private static List<string> SplitStrList(string s) =>
         string.IsNullOrEmpty(s) ? new List<string>() : s.Split('\u001F').ToList();
-
-    private static float[]? ParseFloatArray(string? s) =>
-        string.IsNullOrEmpty(s) ? null : s.Split(',').Select(float.Parse).ToArray();
 
     /// <summary>Перехват SaveChanges: инкремент data_version + audit-безопасность bulk-операций (§3.3).</summary>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
