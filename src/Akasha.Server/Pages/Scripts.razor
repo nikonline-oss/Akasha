@@ -13,14 +13,11 @@
 <MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.scripts")</MudText>
 
 <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-4"
-           StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">Новый скрипт</MudButton>
+           StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">@Loc.T("scripts.new")</MudButton>
 
 @if (_scripts.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">
-        Пока нет ни одного скрипта. Создай визуально через «Новый скрипт» или предложи агенту через
-        <code>akasha_propose_script</code> (MCP).
-    </MudAlert>
+    <MudAlert Severity="Severity.Info">@((MarkupString)Loc.T("scripts.empty"))</MudAlert>
 }
 
 <MudGrid Spacing="3">
@@ -32,18 +29,18 @@
                     <MudText Typo="Typo.subtitle1">@s.Name</MudText>
                     <MudChip T="string" Size="Size.Small">v@s.Version · @s.OutputFormat</MudChip>
                 </div>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">@s.Slug · ttl @s.CacheTtl с</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@s.Slug · @Loc.T("scripts.ttl", s.CacheTtl)</MudText>
                 @if (!string.IsNullOrEmpty(s.Description))
                 {
                     <MudText Typo="Typo.body2" Class="mt-1">@s.Description</MudText>
                 }
                 <div class="d-flex flex-wrap gap-1 mt-3">
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
-                               StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="@(() => RunScript(s))">Запустить</MudButton>
+                               StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="@(() => RunScript(s))">@Loc.T("scripts.run")</MudButton>
                     <MudButton Variant="Variant.Text" Size="Size.Small"
-                               StartIcon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEdit(s))">Изменить</MudButton>
+                               StartIcon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEdit(s))">@Loc.T("scripts.edit")</MudButton>
                     <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
-                               StartIcon="@Icons.Material.Filled.Delete" OnClick="@(() => Delete(s))">Удалить</MudButton>
+                               StartIcon="@Icons.Material.Filled.Delete" OnClick="@(() => Delete(s))">@Loc.T("common.delete")</MudButton>
                 </div>
             </MudPaper>
         </MudItem>
@@ -54,7 +51,7 @@
 {
     <MudPaper Class="pa-4 mt-4" Elevation="3">
         <div class="d-flex justify-space-between align-center mb-2">
-            <MudText Typo="Typo.subtitle1">Результат: @_runName</MudText>
+            <MudText Typo="Typo.subtitle1">@Loc.T("scripts.result", _runName)</MudText>
             <MudChip T="string" Size="Size.Small" Color="@(_cached ? Color.Default : Color.Success)">
                 @(_cached ? "cache hit" : "computed") · @_elapsedMs:F1 ms
             </MudChip>
@@ -65,20 +62,20 @@
 
 @* ─── Создание (визуальный конструктор) ─────────────────────────────────────── *@
 <MudDialog @bind-visible="_createOpen" Options="_dialogOpts">
-    <TitleContent>Новый скрипт</TitleContent>
+    <TitleContent>@Loc.T("scripts.new")</TitleContent>
     <DialogContent>
         <MudGrid Spacing="3">
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_name" Label="Название" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_name" Label="@Loc.T("scripts.name")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_slug" Label="Slug (пусто = из названия)" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_slug" Label="@Loc.T("scripts.slug")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_desc" Label="Описание" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_desc" Label="@Loc.T("scripts.desc")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudSelect T="string" @bind-Value="_from" Label="Откуда (from)" Variant="Variant.Outlined">
+                <MudSelect T="string" @bind-Value="_from" Label="@Loc.T("scripts.from")" Variant="Variant.Outlined">
                     @foreach (var t in QueryTables)
                     {
                         <MudSelectItem T="string" Value="@t">@t</MudSelectItem>
@@ -94,16 +91,16 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudTextField @bind-Value="_project" Label="Проект (slug, необяз.)" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_project" Label="@Loc.T("scripts.project")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_tags" Label="Теги (через запятую, необяз.)" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_tags" Label="@Loc.T("scripts.tags")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="6" md="3">
-                <MudTextField T="string" @bind-Value="_limit" Label="Лимит" Variant="Variant.Outlined" />
+                <MudTextField T="string" @bind-Value="_limit" Label="@Loc.T("scripts.limit")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="6" md="3">
-                <MudSelect T="string" @bind-Value="_orderField" Label="Сортировка по" Variant="Variant.Outlined" Clearable="true">
+                <MudSelect T="string" @bind-Value="_orderField" Label="@Loc.T("scripts.orderField")" Variant="Variant.Outlined" Clearable="true">
                     @foreach (var f in OrderFields)
                     {
                         <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
@@ -111,7 +108,7 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudSelect T="string" @bind-Value="_orderDir" Label="Направление" Variant="Variant.Outlined">
+                <MudSelect T="string" @bind-Value="_orderDir" Label="@Loc.T("scripts.orderDir")" Variant="Variant.Outlined">
                     @foreach (var d in SortDirs)
                     {
                         <MudSelectItem T="string" Value="@d">@d</MudSelectItem>
@@ -119,7 +116,7 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudSelect T="string" @bind-Value="_format" Label="Формат вывода" Variant="Variant.Outlined">
+                <MudSelect T="string" @bind-Value="_format" Label="@Loc.T("scripts.format")" Variant="Variant.Outlined">
                     @foreach (var f in OutputFormats.All)
                     {
                         <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
@@ -127,57 +124,57 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudTextField T="string" @bind-Value="_ttl" Label="Кэш TTL (сек)" Variant="Variant.Outlined" />
+                <MudTextField T="string" @bind-Value="_ttl" Label="@Loc.T("scripts.ttlLabel")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_transform" Label="JMESPath transform (необяз.)" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_transform" Label="@Loc.T("scripts.transform")" Variant="Variant.Outlined" />
             </MudItem>
             @if (Ai.IsConfigured)
             {
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_assistDesc" Label="✨ Опиши, что хочешь найти" Lines="2" Variant="Variant.Outlined"
-                                  Placeholder="последние 5 решений по проекту за неделю" />
+                    <MudTextField @bind-Value="_assistDesc" Label="@Loc.T("scripts.assistLabel")" Lines="2" Variant="Variant.Outlined"
+                                  Placeholder="@Loc.T("scripts.assistPlaceholder")" />
                     <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.AutoAwesome"
                                OnClick="Assist" Disabled="@_assisting">
-                        @(_assisting ? "Генерация…" : "Помочь с запросом")
+                        @(_assisting ? Loc.T("scripts.assistGenerating") : Loc.T("scripts.assist"))
                     </MudButton>
                 </MudItem>
             }
             <MudItem xs="12">
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Предпросмотр запроса (JSON):</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">@Loc.T("scripts.preview")</MudText>
                 <pre class="pa-2 rounded" style="background:#F4F1FA; overflow:auto; max-height:220px; font-size:0.8rem;">@PreviewJson()</pre>
             </MudItem>
         </MudGrid>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => _createOpen = false)">Отмена</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveCreate">Сохранить</MudButton>
+        <MudButton OnClick="@(() => _createOpen = false)">@Loc.T("common.cancel")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveCreate">@Loc.T("common.save")</MudButton>
     </DialogActions>
 </MudDialog>
 
 @* ─── Редактирование (JSON-редактор) ─────────────────────────────────────────── *@
 <MudDialog @bind-visible="_editOpen" Options="_dialogOpts">
-    <TitleContent>Скрипт: @_editSlug</TitleContent>
+    <TitleContent>@Loc.T("scripts.title", _editSlug)</TitleContent>
     <DialogContent>
         <MudGrid Spacing="3">
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_editName" Label="Название" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_editName" Label="@Loc.T("scripts.name")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="_editSlug" Label="Slug" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_editDesc" Label="Описание" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_editDesc" Label="@Loc.T("scripts.desc")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12">
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Query (JSON)</MudText>
                 <div id="script-query-editor" style="height:320px; border:1px solid #ddd; border-radius:4px;"></div>
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_editTransform" Label="JMESPath transform (необяз.)" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_editTransform" Label="@Loc.T("scripts.transform")" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="6">
-                <MudSelect T="string" @bind-Value="_editFormat" Label="Формат вывода" Variant="Variant.Outlined">
+                <MudSelect T="string" @bind-Value="_editFormat" Label="@Loc.T("scripts.format")" Variant="Variant.Outlined">
                     @foreach (var f in OutputFormats.All)
                     {
                         <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
@@ -185,13 +182,13 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6">
-                <MudTextField T="string" @bind-Value="_editTtl" Label="Кэш TTL (сек)" Variant="Variant.Outlined" />
+                <MudTextField T="string" @bind-Value="_editTtl" Label="@Loc.T("scripts.ttlLabel")" Variant="Variant.Outlined" />
             </MudItem>
         </MudGrid>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => _editOpen = false)">Отмена</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEdit">Сохранить</MudButton>
+        <MudButton OnClick="@(() => _editOpen = false)">@Loc.T("common.cancel")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEdit">@Loc.T("common.save")</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -277,13 +274,13 @@
 
     private async Task Assist()
     {
-        if (string.IsNullOrWhiteSpace(_assistDesc)) { Snackbar.Add("Опиши, что найти", Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(_assistDesc)) { Snackbar.Add(Loc.T("scripts.assistNeeded"), Severity.Warning); return; }
         _assisting = true;
         try
         {
             var q = await Ai.GenerateQueryAsync(_assistDesc);
             ApplyQueryToForm(q);
-            Snackbar.Add("Запрос сгенерирован — проверь предпросмотр", Severity.Success);
+            Snackbar.Add(Loc.T("scripts.assistGenerated"), Severity.Success);
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
         finally { _assisting = false; }
@@ -324,7 +321,7 @@
 
     private async Task SaveCreate()
     {
-        if (string.IsNullOrWhiteSpace(_name)) { Snackbar.Add("Название обязательно", Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(_name)) { Snackbar.Add(Loc.T("scripts.nameRequired"), Severity.Warning); return; }
         try
         {
             var query = BuildQuery();
@@ -332,7 +329,7 @@
             var slug = ProposalService.Slugify(string.IsNullOrWhiteSpace(_slug) ? _name : _slug);
             if (await Db.Scripts.AnyAsync(s => s.Slug == slug))
             {
-                Snackbar.Add($"Slug '{slug}' уже существует", Severity.Error);
+                Snackbar.Add(Loc.T("scripts.slugExists", slug), Severity.Error);
                 return;
             }
             Db.Scripts.Add(new Script
@@ -349,7 +346,7 @@
             await Db.SaveChangesAsync();
             _createOpen = false;
             await Reload();
-            Snackbar.Add("Скрипт создан", Severity.Success);
+            Snackbar.Add(Loc.T("scripts.created"), Severity.Success);
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
@@ -397,7 +394,7 @@
     {
         if (_editId is not { } id) return;
         var s = await Db.Scripts.FirstOrDefaultAsync(x => x.Id == id);
-        if (s is null) { Snackbar.Add("Скрипт не найден", Severity.Error); return; }
+        if (s is null) { Snackbar.Add(Loc.T("scripts.notFound"), Severity.Error); return; }
         try
         {
             var query = JsonDocument.Parse(_editQuery).RootElement.Clone();
@@ -405,7 +402,7 @@
             var slug = ProposalService.Slugify(_editSlug);
             if (slug != s.Slug && await Db.Scripts.AnyAsync(x => x.Slug == slug))
             {
-                Snackbar.Add($"Slug '{slug}' уже существует", Severity.Error);
+                Snackbar.Add(Loc.T("scripts.slugExists", slug), Severity.Error);
                 return;
             }
             s.Name = _editName; s.Slug = slug;
@@ -421,7 +418,7 @@
             await Db.SaveChangesAsync();
             _editOpen = false;
             await Reload();
-            Snackbar.Add("Скрипт сохранён", Severity.Success);
+            Snackbar.Add(Loc.T("scripts.saved"), Severity.Success);
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
@@ -433,7 +430,7 @@
         Db.Scripts.Remove(s);
         await Db.SaveChangesAsync();
         await Reload();
-        Snackbar.Add("Скрипт удалён", Severity.Info);
+        Snackbar.Add(Loc.T("scripts.deleted"), Severity.Info);
     }
 
     private static string Pretty(JsonElement el) =>

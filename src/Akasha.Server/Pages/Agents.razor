@@ -5,23 +5,22 @@
 
 <MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.agents")</MudText>
 <MudText Typo="Typo.body2" Class="mb-4">
-    Каждый агент (Claude Desktop, Cursor и т.п.) получает Bearer-ключ <code>ak_…</code>, который показывается
-    только один раз при создании. Скоупы: read / propose / scripts / context (прямая запись в «Контекст агента»).
+    @((MarkupString)Loc.T("agents.hint"))
 </MudText>
 
 @if (_newKey is not null)
 {
     <MudAlert Severity="Severity.Warning" Class="mb-4">
-        <b>Сохраните ключ сейчас — он больше не будет показан:</b><br />
+        <b>@Loc.T("agents.saveKey")</b><br />
         <code style="user-select:all;">@_newKey</code>
-        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _newKey = null)">Скрыть</MudButton>
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _newKey = null)">@Loc.T("agents.hide")</MudButton>
     </MudAlert>
 }
 
 <MudPaper Class="pa-4 mb-4">
     <MudGrid Spacing="3">
         <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_name" Label="Имя агента" Placeholder="claude-desktop" />
+            <MudTextField @bind-Value="_name" Label="@Loc.T("agents.name")" Placeholder="claude-desktop" />
         </MudItem>
         <MudItem xs="12" sm="5">
             @foreach (var sc in Scopes.All)
@@ -33,7 +32,7 @@
         </MudItem>
         <MudItem xs="12" sm="3" Class="d-flex align-end">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="CreateAgent">
-                Создать агента
+                @Loc.T("agents.create")
             </MudButton>
         </MudItem>
     </MudGrid>
@@ -41,26 +40,26 @@
 
 <MudTable Items="_agents" Hover="true" Elevation="0">
     <HeaderContent>
-        <MudTh>Имя</MudTh>
-        <MudTh>Ключ</MudTh>
-        <MudTh>Скоупы</MudTh>
-        <MudTh>Последнее использование</MudTh>
-        <MudTh>Статус</MudTh>
+        <MudTh>@Loc.T("agents.colName")</MudTh>
+        <MudTh>@Loc.T("agents.colKey")</MudTh>
+        <MudTh>@Loc.T("agents.colScopes")</MudTh>
+        <MudTh>@Loc.T("agents.colLastUsed")</MudTh>
+        <MudTh>@Loc.T("agents.colStatus")</MudTh>
         <MudTh></MudTh>
     </HeaderContent>
     <RowTemplate>
-        <MudTd DataLabel="Имя">@context.Name</MudTd>
-        <MudTd DataLabel="Ключ"><code>@context.KeyPrefix…</code></MudTd>
-        <MudTd DataLabel="Скоупы">
+        <MudTd DataLabel="@Loc.T("agents.colName")">@context.Name</MudTd>
+        <MudTd DataLabel="@Loc.T("agents.colKey")"><code>@context.KeyPrefix…</code></MudTd>
+        <MudTd DataLabel="@Loc.T("agents.colScopes")">
             @foreach (var sc in context.Scopes)
             {
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@sc</MudChip>
             }
         </MudTd>
-        <MudTd DataLabel="Last used">
+        <MudTd DataLabel="@Loc.T("agents.colLastUsed")">
             @(context.LastUsedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—")
         </MudTd>
-        <MudTd DataLabel="Статус">
+        <MudTd DataLabel="@Loc.T("agents.colStatus")">
             <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Error)">
                 @(context.IsActive ? "active" : "revoked")
             </MudChip>
@@ -98,13 +97,13 @@
     {
         if (string.IsNullOrWhiteSpace(_name)) return;
         var scopes = Scopes.All.Where(s => _scopeFlags.TryGetValue(s, out var on) && on).ToList();
-        if (scopes.Count == 0) { Snackbar.Add("Выберите хотя бы один скоуп", Severity.Warning); return; }
+        if (scopes.Count == 0) { Snackbar.Add(Loc.T("agents.pickScope"), Severity.Warning); return; }
 
         var (plaintext, agent) = await Auth.CreateAgentAsync(_name, null, scopes);
         _newKey = plaintext;
         _name = "";
         await Reload();
-        Snackbar.Add($"Агент «{agent.Name}» создан", Severity.Success);
+        Snackbar.Add(Loc.T("agents.created", agent.Name), Severity.Success);
     }
 
     private async Task AddContextScope(Agent a)
@@ -114,13 +113,13 @@
         Db.Agents.Update(a);
         await Db.SaveChangesAsync();
         await Reload();
-        Snackbar.Add($"scope «context» добавлен агенту «{a.Name}»", Severity.Success);
+        Snackbar.Add(Loc.T("agents.contextAdded", a.Name), Severity.Success);
     }
 
     private async Task Revoke(Guid id)
     {
         await Auth.RevokeAgentAsync(id);
         await Reload();
-        Snackbar.Add("Ключ отозван", Severity.Info);
+        Snackbar.Add(Loc.T("agents.revokedOk"), Severity.Info);
     }
 }

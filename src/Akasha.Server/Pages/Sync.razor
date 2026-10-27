@@ -5,28 +5,27 @@
 
 <MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.sync")</MudText>
 <MudText Typo="Typo.body2" Class="mb-4">
-    Потянуть изменения с сервера и отправить локальные правки (last-write-wins).
-    Секреты и агенты <b>никогда</b> не синхронизируются. Настройки сохраняются в <code>data/sync-config.json</code>.
+    @((MarkupString)Loc.T("sync.hint"))
 </MudText>
 
 <MudPaper Class="pa-4 mb-4">
     <MudGrid Spacing="3">
         <MudItem xs="12" md="6">
-            <MudTextField @bind-Value="_serverUrl" Label="URL сервера"
+            <MudTextField @bind-Value="_serverUrl" Label="@Loc.T("sync.serverUrl")"
                           Placeholder="https://akasha.example.com" Variant="Variant.Outlined" />
         </MudItem>
         <MudItem xs="12" md="6">
-            <MudTextField @bind-Value="_deviceId" Label="ID устройства" Placeholder="laptop" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="_deviceId" Label="@Loc.T("sync.deviceId")" Placeholder="laptop" Variant="Variant.Outlined" />
         </MudItem>
         <MudItem xs="12">
-            <MudTextField @bind-Value="_deviceKey" Label="Ключ устройства (ak_…)" Variant="Variant.Outlined"
+            <MudTextField @bind-Value="_deviceKey" Label="@Loc.T("sync.deviceKey")" Variant="Variant.Outlined"
                           InputType="InputType.Password" />
         </MudItem>
         <MudItem xs="12" Class="d-flex gap-2 flex-wrap">
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveConfig">Сохранить настройки</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveConfig">@Loc.T("sync.save")</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Secondary"
                        StartIcon="@Icons.Material.Filled.Sync" OnClick="RunSync" Disabled="@_busy">
-                @(_busy ? "Синхронизация…" : "Синхронизировать")
+                @(_busy ? Loc.T("sync.syncing") : Loc.T("sync.run"))
             </MudButton>
         </MudItem>
     </MudGrid>
@@ -35,19 +34,19 @@
 @if (_lastSync is not null)
 {
     <MudAlert Severity="Severity.Info" Class="mb-4">
-        Последняя синхронизация: @_lastSync.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+        @Loc.T("sync.last", _lastSync.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"))
     </MudAlert>
 }
 
 @if (_result is not null)
 {
     <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" GutterBottom="true">Результат</MudText>
+        <MudText Typo="Typo.h6" GutterBottom="true">@Loc.T("sync.result")</MudText>
         <MudGrid Spacing="3">
-            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Success">Получено: @_result.Pulled</MudChip></MudItem>
-            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Success">Отправлено: @_result.Pushed</MudChip></MudItem>
-            <MudItem xs="6" sm="3"><MudChip T="string">Пропущено (старше): @_result.SkippedOlder</MudChip></MudItem>
-            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Warning">Конфликты: @_result.Conflicts</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Success">@Loc.T("sync.pulled", _result.Pulled)</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Success">@Loc.T("sync.pushed", _result.Pushed)</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string">@Loc.T("sync.skipped", _result.SkippedOlder)</MudChip></MudItem>
+            <MudItem xs="6" sm="3"><MudChip T="string" Color="Color.Warning">@Loc.T("sync.conflicts", _result.Conflicts)</MudChip></MudItem>
         </MudGrid>
     </MudPaper>
 }
@@ -70,7 +69,7 @@
     private void SaveConfig()
     {
         SyncClient.SaveConfig(_serverUrl, _deviceKey, _deviceId);
-        Snackbar.Add("Настройки сохранены", Severity.Success);
+        Snackbar.Add(Loc.T("sync.saved"), Severity.Success);
     }
 
     private async Task RunSync()
@@ -80,7 +79,7 @@
         {
             _result = await SyncClient.SyncAsync(SyncSvc);
             _lastSync = SyncClient.LastSync();
-            Snackbar.Add("Синхронизация завершена", Severity.Success);
+            Snackbar.Add(Loc.T("sync.done"), Severity.Success);
         }
         catch (Exception ex)
         {
