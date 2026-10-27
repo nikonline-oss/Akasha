@@ -1,122 +1,268 @@
-# Akasha — Deployment Guide
+# Akasha — Установка и развёртывание
 
-## 1. Server (VPS, Docker) — рекомендуемый путь
+Полное руководство по установке сервера, сборке portable-версии, синхронизации и бэкапу.
+Актуально для кода в репозитории (не сверяйся с README.md — там ТЗ v0.3 с местами устаревшими деталями).
 
-### docker-compose
+---
 
-```yaml
-services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: akasha
-      POSTGRES_USER: akasha
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes: ["akasha-pg:/var/lib/postgresql/data"]
-    restart: unless-stopped
+## 1. Требования
 
-  akasha:
-    build: .
-    ports: ["127.0.0.1:5077:5077"]   # наружу только через reverse-proxy (Caddy/nginx + TLS)
-    environment:
-      AKASHA_MODE: server
-      ConnectionStrings__Akasha: "Host=postgres;Database=akasha;Username=akasha;Password=${POSTGRES_PASSWORD}"
-      AKASHA_OWNER_EMAIL: ${AKASHA_OWNER_EMAIL}
-      AKASHA_OWNER_PASSWORD: ${AKASHA_OWNER_PASSWORD}
-      AKASHA_MASTER_KEY: ${AKASHA_MASTER_KEY}          # base64, 32 байта — шифрование секретов
-      AKASHA_TELEGRAM_TOKEN: ${AKASHA_TELEGRAM_TOKEN}  # опционально — бот аппрувов
-      AKASHA_TELEGRAM_CHAT_ID: ${AKASHA_TELEGRAM_CHAT_ID}
-    depends_on: [postgres]
-    restart: unless-stopped
+| Режим | Что нужно |
+|---|---|
+| **Server (Docker)** | Docker + Docker Compose. PostgreSQL ставится автоматически (образ `pgvector/pgvector:pg16`). |
+| **Server (без Docker)** | .NET 9 SDK, PostgreSQL 16 с расширением `pgvector`. |
+| **Portable (сборка)** | .NET 9 SDK. Runtime не нужен — бинарник self-contained. |
+| **Portable (запуск)** | Ничего, кроме бинарника. Работает офлайн. |
 
-volumes: { akasha-pg: {} }
-```
+Ресурсы: 1 CPU / 512 MB RAM достаточно для личного объёма данных.
 
-### Подготовка
+---
+
+## 2. Server — Docker (рекомендуемый путь)
+
+### 2.1 Клонировать и настроить
 
 ```bash
-# master key
-openssl rand -base64 32            # → AKASHA_MASTER_KEY
+git clone https://github.com/nikonline-oss/Akasha.git
+cd Akasha
+cp .env.example .env
+```
+
+Отредактируй `.env`:
+
+```ini
+# порт и адрес хоста (см. §7)
+AKASHA_PORT=8080
+AKASHA_HOST=127.0.0.1
+
+# база данных (PostgreSQL)
+AKASHA_DB_PASSWORD=change-me-strong-password
+
+# владелец (создаётся при первом старте)
+AKASHA_OWNER_EMAIL=you@example.com
+# пусто = сгенерировать временный пароль (напечатается в логах)
+AKASHA_OWNER_PASSWORD=
+
+# ключ шифрования секретов (AES-GCM). Необязателен: если пуст,
+# сгенерируется случайный ключ и сохранится в /app/data/master.key (том akasha-data).
+# Рекомендуется задать явно, чтобы управлять ключом: openssl rand -base64 32
+AKASHA_MASTER_KEY=
+
+# Telegram-бот аппрувов (опционально)
+AKASHA_TELEGRAM_BOT_TOKEN=
+AKASHA_TELEGRAM_CHAT_ID=
+```
+
+### 2.2 Запустить
+
+```bash
 docker compose up -d
-docker compose logs akasha          # схема создаётся автоматически (EnsureCreated/миграции)
-curl -s localhost:5077/healthz     # {"status":"ok"}
+docker compose logs -f akasha          # смотри "owner created: email / password" если пароль не задавал
+curl -s http://127.0.0.1:8080/healthz  # {"status":"ok"}
 ```
 
-Открыть `https://host/` → login владельцем → создать агента (UI Agents или `POST /api/admin/agents`) — ключ показывается один раз.
+### 2.3 Первый вход
 
-### Reverse-proxy (Caddy)
+Открой `http://127.0.0.1:8080` (или через reverse-proxy, §6) → попадёшь на страницу **/login** →
+войди email + паролем из `.env`. Дальше:
+
+1. **Проекты → Новый проект** — заведи первый проект.
+2. **Агенты → Создать агента** — выбери скоупы (`read`, `propose`), скопируй ключ `ak_…` (показывается **один раз**).
+
+> Схема БД создаётся автоматически на старте (`EnsureCreated`, миграций пока нет). В образе pgvector
+> расширение `vector` подключается best-effort; если `CREATE EXTENSION` упал — включи вручную.
+
+---
+
+## 3. Server — без Docker (ручная установка)
+
+### 3.1 PostgreSQL
+
+```bash
+# Debian/Ubuntu, образ уже содержит pgvector
+docker run -d --name akasha-pg -e POSTGRES_DB=akasha -e POSTGRES_USER=akasha \
+  -e POSTGRES_PASSWORD=secret -p 5432:5432 pgvector/pgvector:pg16
+# либо свой PG16 + CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### 3.2 Собрать и запустить
+
+```bash
+export ConnectionStrings__Akasha="Host=localhost;Database=akasha;Username=akasha;Password=secret"
+export AKASHA_OWNER_EMAIL=you@example.com
+export AKASHA_OWNER_PASSWORD=your-password
+export AKASHA_MASTER_KEY=$(openssl rand -base64 32)
+export ASPNETCORE_URLS=http://127.0.0.1:5077
+
+dotnet run --project src/Akasha.Server -c Release
+# → логин на http://127.0.0.1:5077
+```
+
+Строку подключения можно задать и как `AKASHA_DATABASE_URL` (алиас `ConnectionStrings__Akasha`).
+
+---
+
+## 4. Portable — сборка self-contained
+
+### 4.1 Собрать под нужные ОС
+
+```bash
+# Windows
+dotnet publish src/Akasha.Portable -c Release -r win-x64 --self-contained \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist/win
+
+# Linux
+dotnet publish src/Akasha.Portable -c Release -r linux-x64 --self-contained \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist/linux
+
+# macOS (Intel / Apple Silicon)
+dotnet publish src/Akasha.Portable -c Release -r osx-x64   --self-contained -p:PublishSingleFile=true -o dist/osx-x64
+dotnet publish src/Akasha.Portable -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -o dist/osx-arm64
+```
+
+> Важно: публикуется проект **`Akasha.Portable`** (а не `Akasha.Server`) — он и есть portable-хост
+> с командами CLI. На выходе один исполняемый файл `akasha` (`akasha.exe` на Windows).
+
+### 4.2 Запуск
+
+```bash
+./dist/linux/akasha portable
+# → [akasha] portable UI: http://127.0.0.1:5173 (SQLite: data/akasha.db)
+# браузер откроется автоматически
+```
+
+- Слушает **только** `127.0.0.1` (никогда `0.0.0.0`), логина нет — владелец по localhost.
+- Порт: по умолчанию **5173**; меняется `--port N` или `AKASHA_PORT=N`.
+- `akasha serve` — то же самое (dev-режим).
+
+### 4.3 Файлы данных
+
+Всё лежит в каталоге данных (по умолчанию `./data`, меняется через `AKASHA_DATA_DIR`):
 
 ```
-your.domain {
-    reverse_proxy 127.0.0.1:5077
+data/
+├── akasha.db            # SQLite (WAL)
+├── master.key           # автосгенерированный ключ шифрования секретов (если не задан AKASHA_MASTER_KEY)
+├── sync-config.json     # настройки синхронизации (заполняются из UI «Синхронизация»)
+└── sync-state.json      # курсор последней синхронизации
+```
+
+Этот каталог и есть «флешка» — переноси его целиком.
+
+### 4.4 Команды CLI
+
+```bash
+akasha portable                # локальный сервер + UI
+akasha serve                   # то же (dev-режим)
+akasha sync                    # pull+push с сервером (см. §5)
+akasha export [out.zip] [--secrets]   # полный дамп (секреты только шифрованными)
+akasha import <archive.zip>           # идемпотентный импорт
+akasha agent-key <name> [read propose scripts...]  # создать ключ агента локально
+```
+
+---
+
+## 5. Синхронизация portable ↔ server
+
+Синхронизируются записи/проекты/связи/скрипты; **секреты, агенты, аудит и владелец — никогда**.
+Правило: last-write-wins по `updated_at`; если обе стороны меняли одну запись (`state_hash` разошёлся) —
+создаётся conflict-proposal, который владелец решает руками.
+
+### 5.1 Через UI (рекомендуется)
+
+Portable → меню **«Синхронизация»** → заполни:
+
+- **URL сервера** — напр. `https://akasha.example.com` (или `http://IP:8080`);
+- **ID устройства** — любое имя, напр. `laptop`;
+- **Ключ устройства** — `ak_…` (это ключ агента, созданный на сервере: сервер → UI → Агенты).
+
+«Сохранить настройки» → «Синхронизировать». Результат: получено / отправлено / пропущено / конфликты + время последней синхронизации.
+
+### 5.2 Через CLI
+
+```bash
+export AKASHA_SERVER_URL=https://akasha.example.com
+export AKASHA_DEVICE_KEY=ak_xxxxxxxx_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+export AKASHA_DEVICE_ID=laptop          # опционально
+akasha sync
+```
+
+Ключ устройства — тот же ключ агента. CLI и UI используют один и тот же конфиг (`data/sync-config.json`).
+
+---
+
+## 6. Reverse-proxy и TLS
+
+Server-режим **обязан** работать за HTTPS (ключи агентов ходят в `Authorization: Bearer`). Пример Caddy:
+
+```
+akasha.example.com {
+    reverse_proxy 127.0.0.1:8080
 }
 ```
 
-## 2. Portable (флешка/ноутбук, офлайн)
+nginx:
 
-Self-contained публикация под три ОС:
-
-```bash
-dotnet publish src/Akasha.Server -c Release -r win-x64   --self-contained -o dist/win
-dotnet publish src/Akasha.Server -c Release -r linux-x64 --self-contained -o dist/linux
-dotnet publish src/Akasha.Server -c Release -r osx-arm64 --self-contained -o dist/macos
+```nginx
+server {
+    listen 443 ssl;
+    server_name akasha.example.com;
+    # ... ssl_certificate / ssl_certificate_key ...
+    location / { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+}
 ```
 
-Запуск: `./akasha portable` — ищет `akasha.db` рядом с бинарником (SQLite WAL), стартует на `http://127.0.0.1:5077`, открывает браузер. Внешних зависимостей нет; эмбеддинги — локальный hashed-ngram fallback (ONNX-модель опционально, каталог `models/`).
+---
 
-Синхронизация с сервером:
+## 7. Порты и сеть (docker-compose)
 
-```bash
-./akasha sync --server https://your.domain --key ak_xxx_yyy
-# pull→apply→push→commit cursor; секреты/агенты не участвуют (см. sync-protocol.md)
-```
-
-## 3. Конфигурация (ENV)
-
-| Переменная | Режим | Назначение |
-|---|---|---|
-| `AKASHA_MODE` | оба | `server` \| `portable` |
-| `ConnectionStrings__Akasha` | server | Npgsql строка |
-| `AKASHA_SQLITE_PATH` | portable | путь к akasha.db (default: рядом с exe) |
-| `AKASHA_OWNER_EMAIL` / `AKASHA_OWNER_PASSWORD` | server | bootstrap владельца (Argon2id при первом старте) |
-| `AKASHA_MASTER_KEY` | оба | AES-GCM ключ секретов (base64 32B). **Без него секреты недоступны** |
-| `AKASHA_URLS` | оба | bind address (portable жёстко 127.0.0.1) |
-| `AKASHA_PORT` | docker-compose | порт веб-интерфейса (внутри контейнера и на хосте), default `8080` |
-| `AKASHA_HOST` | docker-compose | адрес хоста для проброса порта: `127.0.0.1` (только reverse-proxy, default) или `0.0.0.0` |
-| `AKASHA_TELEGRAM_TOKEN` / `AKASHA_TELEGRAM_CHAT_ID` | server | бот-аппрувы |
-
-## 3.1 Настройка портов (docker-compose)
-
-Порт задаётся в `.env`, менять `docker-compose.yml` не нужно:
+Управляется из `.env`, менять `docker-compose.yml` не нужно:
 
 ```bash
 # .env
-AKASHA_PORT=9090          # если 8080 занят другим сервисом
-AKASHA_HOST=127.0.0.1     # default; 0.0.0.0 — открывать напрямую без reverse-proxy
+AKASHA_PORT=8080        # порт и внутри контейнера, и на хосте
+AKASHA_HOST=127.0.0.1   # слушать только локально (для reverse-proxy); 0.0.0.0 — открыть напрямую
 ```
 
-Применить: `docker compose up -d` (пересоздастся только контейнер akasha).
+- `AKASHA_HOST=127.0.0.1` + Caddy/nginx — рекомендуемый вариант.
+- `AKASHA_HOST=0.0.0.0 AKASHA_PORT=9090` — открыть напрямую (обязательно сильный пароль владельца + фаервол: `ufw allow 9090/tcp`).
 
-Проверить, кто занял порт на хосте: `ss -ltnp | grep 8080`.
+---
 
-Если Akasha должна быть доступна напрямую по IP VPS (без домена/Caddy):
-`AKASHA_HOST=0.0.0.0 AKASHA_PORT=9090` → `http://ВАШ_IP:9090` (не забудьте пароль владельца понадежнее и фаервол: `ufw allow 9090/tcp`).
+## 8. Бэкап и восстановление
 
-## 4. Backup & restore
+- **PostgreSQL**: `pg_dump akasha` по cron + копия на объектное хранилище.
+- **Portable**: скопировать каталог `data/` целиком (включая `master.key`, иначе секреты не расшифруются).
+- **Переносимый формат**: UI владельца (или CLI `akasha export`) → zip `akasha-export-v1` (JSON + Markdown).
+  Импорт идемпотентен (`akasha import <archive.zip>`). Секреты попадают в экспорт только с `--secrets` и только зашифрованными.
 
-- PostgreSQL: `pg_dump akasha` cron'ом + копия на объект хранения.
-- Portable: файл `akasha.db` (+WAL checkpoint) — просто скопировать.
-- Переносимый формат: `GET /api/admin/export` → zip `akasha-export-v1` (JSON+Markdown, читаем без Akasha); импорт идемпотентен (`POST /api/admin/import`). Секреты в экспорт попадают только зашифрованными и только по явному флагу.
+---
 
-## 5. Обновление
+## 9. Обновление
 
 ```bash
-docker compose build && docker compose up -d   # миграции EF применяются на старте
+git pull
+docker compose build && docker compose up -d
 ```
-Схема обратно совместима внутри v1; breaking-изменения сопровождает export→import путь.
 
-## 6. Требования
+Схема БД создаётся через `EnsureCreated` (миграций нет): новые таблицы появятся на старте, но изменение
+существующих полей потребует ручной миграции или путь export → import.
 
-- .NET SDK 9 для сборки; runtime не нужен при self-contained.
-- 1 CPU / 512 MB RAM достаточно (личный объём данных); pgvector расширение входит в образ.
-- TLS обязателен для server-режима (ключи агентов ходят в Authorization header).
+---
+
+## 10. Полный справочник переменных окружения
+
+| Переменная | Режим | Назначение |
+|---|---|---|
+| `ConnectionStrings__Akasha` / `AKASHA_DATABASE_URL` | server | строка подключения PostgreSQL (Npgsql) |
+| `AKASHA_SQLITE_PATH` | portable | путь к `akasha.db` (default `data/akasha.db`) |
+| `AKASHA_DATA_DIR` | оба | каталог данных (default `data`) — db, master.key, sync-файлы |
+| `AKASHA_PORTABLE` | server | любое непустое значение = portable-режим (SQLite + localhost-owner) |
+| `AKASHA_OWNER_EMAIL` / `AKASHA_OWNER_PASSWORD` | server | bootstrap владельца (Argon2id; пустой пароль = сгенерировать) |
+| `AKASHA_MASTER_KEY` | оба | ключ шифрования секретов. Пусто = автосгенерировать в `data/master.key` |
+| `AKASHA_PORT` | portable / docker | порт веб-интерфейса (portable default 5173, docker default 8080) |
+| `AKASHA_HOST` | docker | адрес хоста для проброса порта (`127.0.0.1` / `0.0.0.0`) |
+| `AKASHA_DB_PASSWORD` | docker | пароль БД PostgreSQL (используется compose) |
+| `AKASHA_TELEGRAM_BOT_TOKEN` / `AKASHA_TELEGRAM_CHAT_ID` | server | Telegram-бот аппрувов (устаревшие алиасы `AKASHA_TG_*`) |
+| `AKASHA_SERVER_URL` / `AKASHA_DEVICE_KEY` / `AKASHA_DEVICE_ID` | portable | параметры синхронизации (можно хранить в `data/sync-config.json` через UI) |
+| `ASPNETCORE_URLS` | server | адрес/порт прослушивания (в Docker уже задан `http://+:8080`) |

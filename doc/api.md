@@ -1,85 +1,101 @@
 # Akasha — REST API Reference
 
-Базовый префикс: `/api`. Аутентификация двух типов:
+Базовый префикс: **`/api/v1`**. Аутентификация двух типов:
 
-- **Владелец (UI/admin)**: session cookie `akasha_session` (login через `POST /api/auth/login`) — либо Basic/ENV bootstrap.
-- **AI-агент**: `Authorization: Bearer ak_<prefix>_<secret>` — Argon2id-верифицируемый ключ с набором скоупов (`read`, `propose`, `scripts`, `sync`).
+- **Владелец (UI/admin)**: session cookie `akasha_session` (вход через `POST /api/v1/auth/login`) либо
+  в portable-режиме — owner автоматически по localhost.
+- **AI-агент / устройство синхронизации**: `Authorization: Bearer ak_<prefix>_<secret>` — Argon2id-ключ
+  со скоупами `read`, `propose`, `scripts`.
 
-Формат ошибок (единый): `{"error":{"code":"...","message":"..."}}`
-Коды: `401 unauthorized`, `403 forbidden_scope`, `404 not_found`, `409 version_conflict`, `422 validation_failed / sync_rejected`, `429 rate_limited`.
+Формат ошибок (единый): `{"error":"<code>","detail":"<...>"}`.
+Коды: `401 unauthorized`, `403 forbidden`, `404 not_found`, `409 conflict`, `422 validation / invalid_query / sync_rejected`, `429 rate_limited`.
 
 ## Auth
 
 | Метод | Путь | Кто | Описание |
 |---|---|---|---|
-| POST | `/api/auth/login` | любой | `{email,password}` → cookie-сессия владельца |
-| POST | `/api/auth/logout` | owner | завершение сессии |
-| GET | `/api/auth/me` | любой | текущий principal (role, scopes, name) |
+| POST | `/api/v1/auth/login` | публичный | `{email,password}` → cookie-сессия владельца |
+| POST | `/api/v1/auth/logout` | owner | завершение сессии |
+| GET | `/api/v1/auth/me` | любой | текущий principal (role, scopes, name) |
 
 ## Чтение (scope: `read`)
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/api/projects` | список проектов |
-| GET | `/api/projects/{slug}` | проект + последние записи |
-| GET | `/api/entries?project=&kind=&tag=&limit=&offset=` | список записей с фильтрами |
-| GET | `/api/entries/{id}` | запись целиком |
-| GET | `/api/entries/{id}/links` | связи записи (out/in) |
-| POST | `/api/search` | `{q, mode: hybrid\|fts\|semantic, limit, project?, tags?}` → гибрид FTS+вектор |
-| POST | `/api/query` | Structured JSON Query (см. scripts-spec.md). Whitelist-only, лимит 500 |
-| GET | `/api/query/schema` | описание схемы для LLM (таблицы, поля, операторы) |
+| GET | `/api/v1/projects` | список проектов |
+| GET | `/api/v1/projects/{slug}` | проект + последние записи |
+| GET | `/api/v1/entries?project=&kind=&limit=&cursor=` | список записей с фильтрами |
+| GET | `/api/v1/entries/{id}` | запись целиком |
+| GET | `/api/v1/entries/{id}/links` | связи записи |
+| POST | `/api/v1/search` | `{query, mode: hybrid\|fts\|vector, limit, project?, kind?, tags?}` |
+| POST | `/api/v1/query` | одноразовый structured JSON Query (whitelist, лимит 1000) |
+| GET | `/api/v1/query/schema` | JSON Schema языка запросов + примеры |
 
 ## Proposals (запись агентами; scope: `propose`)
 
 | Метод | Путь | Кто | Описание |
 |---|---|---|---|
-| POST | `/api/proposals` | agent | создать предложение `{op: create\|update\|delete, target: entries\|projects\|scripts, target_id?, base_version?, payload}` → 201 pending |
-| GET | `/api/proposals/{id}` | agent(owner) | статус своего предложения |
-| GET | `/api/proposals?status=pending` | agent | листинг |
+| POST | `/api/v1/proposals` | agent | `{op: create\|update\|delete, target: entries\|projects\|entry_links\|scripts, target_id?, base_version?, payload}` → pending |
+| GET | `/api/v1/proposals/{id}` | agent(owner) | статус своего предложения |
+| GET | `/api/v1/proposals?status=` | agent | листинг (агент видит только свои) |
 
-Прямых write-endpoint'ов для агентов **не существует** — это архитектурное ограничение ТЗ §6.
+Прямых write-эндпоинтов для агентов **не существует** — только proposals.
 
 ## Admin (только владелец)
 
-Группа `/api/admin`:
+Группа `/api/v1/admin`:
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/admin/proposals?status=` | очередь аппрувов |
+| GET | `/admin/proposals?status=` | очередь аппрувов (с diff) |
 | POST | `/admin/proposals/{id}/approve` | применить (409 при version conflict) |
-| POST | `/admin/proposals/{id}/reject` | отклонить `{comment}` |
+| POST | `/admin/proposals/{id}/reject` | отклонить `{comment}` (комментарий обязателен) |
 | POST | `/admin/proposals/batch-approve` | `{ids[]}` |
-| GET/POST/DELETE | `/admin/agents` | управление агентами; POST возвращает **полный ключ один раз** |
-| GET | `/admin/audit?limit=&agent=` | журнал |
-| GET/POST/DELETE | `/admin/secrets`, `/admin/secrets/{id}/reveal` | секреты (AES-GCM); reveal только owner |
-| POST/PUT/DELETE | `/admin/projects`, `/admin/entries` | CRUD напрямую |
-| POST/DELETE | `/admin/entries/links` | добавить/убрать связь |
-| POST/PUT/DELETE | `/admin/scripts`, `/admin/scripts/{slug}`, `/admin/scripts/{slug}/invalidate` | реестр скриптов |
-| GET | `/admin/export` | zip «akasha-export-v1» |
-| POST | `/admin/import` | импорт zip (multipart/raw body), идемпотентно |
+| GET / POST | `/admin/agents` | список / создание (`POST` возвращает **полный ключ один раз**) |
+| DELETE | `/admin/agents/{id}` | revoke |
+| GET | `/admin/audit?actor=&target=&since=` | журнал |
+| GET / POST | `/admin/secrets` | список (метаданные) / создание |
+| GET | `/admin/secrets/{id}/reveal` | расшифровать значение (пишется в audit) |
+| DELETE | `/admin/secrets/{id}` | удалить |
+| POST / PUT / DELETE | `/admin/projects[/{id}]` | CRUD проектов |
+| POST / PUT / DELETE | `/admin/entries[/{id}]` | CRUD записей |
+| POST / DELETE | `/admin/entries/links` | добавить/убрать связь |
+| POST / PUT | `/admin/scripts[/{slug}]` | создать/обновить скрипт (`PUT` → version++) |
+| POST | `/admin/scripts/{slug}/invalidate` | сброс кэша |
+| DELETE | `/admin/scripts/{slug}` | удалить скрипт |
+| GET | `/admin/export?includeSecrets=` | zip `akasha-export-v1` |
+| POST | `/admin/import` | multipart `file` — идемпотентный импорт |
 
 ## Scripts (scope: `scripts`)
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/api/scripts` | список доступных скриптов |
-| POST | `/api/scripts/{slug}/run` | `{params{}}` → результат (кэш по version+data_version+params) |
+| GET | `/api/v1/scripts` | список скриптов |
+| POST | `/api/v1/scripts/{slug}/run` | `{params{}}` → результат (кэш по version + data_version) |
 
-## Sync (scope: `sync` или owner)
+## Sync
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/api/sync/pull?since=<iso8601>` | изменения после `since` (buffer 2с), desc by updated_at |
-| POST | `/api/sync/push` | `{device_id, changes:[{entity,op,data,updated_at}]}` → `{applied, skipped_older, conflicts[]}`; forbidden entities → 422 |
+| GET | `/api/v1/sync/pull?since=<iso8601>` | изменения после `since` (буфер 2с) → `{changes, serverTime}` |
+| POST | `/api/v1/sync/push` | `{device_id, changes:[{entity,op,data,updated_at}]}` → `{applied, skipped_older, conflict_proposals}` |
+
+Forbidden entities (`secrets`, `audit_log`, `agents`, `owners`) → `422 sync_rejected`.
 
 ## Прочее
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/healthz` | `{status:"ok"}` без аутентификации |
-| POST | `/mcp` | MCP streamable endpoint (см. mcp-tools.md) |
+| GET | `/healthz` | `{"status":"ok"}` без аутентификации |
+| POST | `/mcp` | MCP streamable-HTTTP endpoint (JSON-RPC 2.0), **требует Bearer/сессии** (см. [mcp-tools.md](mcp-tools.md)) |
 
-## Rate limiting (§6.4 ТЗ)
+## Rate limiting
 
-Скользящее окно per-principal: query/search — 60/мин, proposals — 20/мин, sync push — 10/мин.
-Превышение → `429 {"error":{"code":"rate_limited",...}}` + заголовок `Retry-After`.
+Скользящее окно на агента (owner не лимитируется):
+
+- `POST /api/v1/proposals` — 10/мин;
+- `POST /api/v1/search` — 60/мин;
+- `POST /api/v1/query` — 30/мин;
+- остальные API/MCP — 60/мин.
+
+Превышение → `429` + заголовок `Retry-After`.
