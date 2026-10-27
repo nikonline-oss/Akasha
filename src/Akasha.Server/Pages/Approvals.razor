@@ -42,14 +42,38 @@ else
 
             @if (_diffs.TryGetValue(p.Id, out var diff))
             {
-                <MudText Typo="Typo.subtitle2">@diff.Title</MudText>
-                <MudText Typo="Typo.body2" Class="mb-2">@diff.Summary</MudText>
-                <div class="akasha-diff pa-2 rounded" style="background:#F4F1FA; font-family:monospace; font-size:0.85rem;">
-                    @foreach (var line in diff.Body)
+                <MudText Typo="Typo.subtitle2" Class="mb-1">@diff.Summary</MudText>
+                @if (diff.Title.Count > 0)
+                {
+                    <div class="akasha-diff pa-2 rounded mb-2" style="background:#F4F1FA; font-family:monospace; font-size:0.85rem;">
+                        @foreach (var line in diff.Title)
+                        {
+                            <div style="@DiffStyle(line.Type)">@(line.Type == "add" ? "+ " : line.Type == "del" ? "- " : "  ")@line.Text</div>
+                        }
+                    </div>
+                }
+                @if (diff.Body.Count > 0)
+                {
+                    <div class="akasha-diff pa-2 rounded mb-2" style="background:#F4F1FA; font-family:monospace; font-size:0.85rem;">
+                        @foreach (var line in diff.Body)
+                        {
+                            <div style="@DiffStyle(line.Type)">@(line.Type == "add" ? "+ " : line.Type == "del" ? "- " : "  ")@line.Text</div>
+                        }
+                    </div>
+                }
+                @if (diff.FieldDiffs is { Count: > 0 })
+                {
+                    @foreach (var kv in diff.FieldDiffs)
                     {
-                        <div style="@DiffStyle(line.Type)">@(line.Type == "add" ? "+ " : line.Type == "del" ? "- " : "  ")@line.Text</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 mb-1">@kv.Key</MudText>
+                        <div class="akasha-diff pa-2 rounded mb-2" style="background:#F4F1FA; font-family:monospace; font-size:0.85rem;">
+                            @foreach (var line in kv.Value)
+                            {
+                                <div style="@DiffStyle(line.Type)">@(line.Type == "add" ? "+ " : line.Type == "del" ? "- " : "  ")@line.Text</div>
+                            }
+                        </div>
                     }
-                </div>
+                }
             }
         </MudPaper>
     }
