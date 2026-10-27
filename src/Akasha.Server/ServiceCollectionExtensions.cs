@@ -154,12 +154,19 @@ public static class ServiceCollectionExtensions
         {
             try
             {
-                // pgvector: расширение создаём ДО EnsureCreated, т.к. колонка embedding имеет тип vector(384).
+                // pgvector: расширение создаём ДО EnsureCreated, т.к. колонка Embedding имеет тип vector(384).
                 await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS vector;", ct);
                 await db.Database.EnsureCreatedAsync(ct);
+
+                // EnsureCreated не мигрирует существующую схему. Если Embedding создан старой версией
+                // как text — конвертируем в vector(384); эмбеддинги пересоздаст фоновый worker.
+                var migrated = await MigrateEmbeddingColumnAsync(db, ct);
+
                 // ivfflat-индекс для векторного поиска (best-effort).
                 await db.Database.ExecuteSqlRawAsync(
-                    "CREATE INDEX IF NOT EXISTS ix_entries_embedding ON entries USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);", ct);
+                    "CREATE INDEX IF NOT EXISTS ix_entries_embedding ON entries USING ivfflat (\"Embedding\" vector_cosine_ops) WITH (lists = 100);", ct);
+
+                if (migrated) await ReenqueueMissingEmbeddingsAsync(sp, ct);
             }
             catch (Exception ex)
             {
@@ -172,5 +179,30 @@ public static class ServiceCollectionExtensions
         var (email, password) = await auth.EnsureOwnerAsync(ct);
         if (!string.IsNullOrEmpty(password))
             Console.WriteLine($"[akasha] owner created: {email} / {password}  (change via AKASHA_OWNER_PASSWORD env)");
+    }
+
+    /// <summary>Старая схема (колонка Embedding как text) → vector(384). true, если сконвертировали.</summary>
+    private static async Task<bool> MigrateEmbeddingColumnAsync(AkashaDbContext db, CancellationToken ct)
+    {
+        var dataType = await db.Database.SqlQueryRaw<string>(
+                "SELECT data_type AS \"Value\" FROM information_schema.columns WHERE table_name = 'entries' AND column_name = 'Embedding'")
+            .FirstOrDefaultAsync(ct);
+        if (!string.Equals(dataType, "text", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE entries DROP COLUMN ""Embedding"";", ct);
+        await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE entries ADD COLUMN ""Embedding"" vector(384);", ct);
+        return true;
+    }
+
+    /// <summary>После конвертации колонки — ставим в очередь записи без эмбеддинга (worker пересчитает).</summary>
+    private static async Task ReenqueueMissingEmbeddingsAsync(IServiceProvider sp, CancellationToken ct)
+    {
+        var queue = sp.GetService<EmbeddingQueue>();
+        if (queue is null) return;
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AkashaDbContext>();
+        var ids = await db.Entries.Where(e => e.Embedding == null).Select(e => e.Id).ToListAsync(ct);
+        foreach (var id in ids) queue.Enqueue(id);
     }
 }

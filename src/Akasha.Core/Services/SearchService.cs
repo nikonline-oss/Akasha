@@ -4,6 +4,7 @@ using Akasha.Core.Data;
 using Akasha.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
+using Pgvector.EntityFrameworkCore;
 
 namespace Akasha.Core.Services;
 
@@ -85,19 +86,18 @@ public class SearchService
             }
             else
             {
-                // Postgres + pgvector: SQL-упорядочивание по косинусному расстоянию (оператор <=>).
-                var vecStr = "[" + string.Join(",", qv.Select(f => f.ToString("R"))) + "]";
-                var candidates = await _db.Entries
-                    .FromSqlRaw(
-                        "SELECT * FROM entries WHERE deleted_at IS NULL AND embedding IS NOT NULL ORDER BY embedding <=> CAST({0} AS vector) LIMIT 100",
-                        vecStr)
-                    .AsNoTracking()
+                // Postgres + pgvector: упорядочивание по косинусному расстоянию средствами EF.
+                var qvec = new Vector(qv);
+                var candidates = await Base()
+                    .Where(e => e.Embedding != null)
+                    .OrderBy(e => e.Embedding!.CosineDistance(qvec))
+                    .Take(100)
                     .ToListAsync(ct);
                 if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
                 foreach (var e in candidates)
                 {
                     if (e.Embedding is null) continue;
-                    var cos = HashedNgramEmbeddings.Cosine(qv, e.Embedding.ToArray());
+                    var cos = 1.0 - e.Embedding.CosineDistance(qvec);
                     if (cos > 0.01) vecRanked.Add((e, cos));
                 }
             }
