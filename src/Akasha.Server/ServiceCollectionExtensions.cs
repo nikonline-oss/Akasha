@@ -151,7 +151,7 @@ public static class ServiceCollectionExtensions
         {
             await db.Database.EnsureCreatedAsync(ct);
             await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
-            await EnsureContextTableAsync(db, ct);
+            await ApplySchemaMigrationsAsync(db, ct);
         }
         else
         {
@@ -160,11 +160,9 @@ public static class ServiceCollectionExtensions
                 // pgvector: расширение создаём ДО EnsureCreated, т.к. колонка Embedding имеет тип vector(384).
                 await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS vector;", ct);
                 await db.Database.EnsureCreatedAsync(ct);
-                await EnsureContextTableAsync(db, ct);
 
-                // EnsureCreated не мигрирует существующую схему. Если Embedding создан старой версией
-                // как text — конвертируем в vector(384); эмбеддинги пересоздаст фоновый worker.
-                var migrated = await MigrateEmbeddingColumnAsync(db, ct);
+                // EnsureCreated не мигрирует существующую схему — версионные патчи догоняют её.
+                var migrated = await ApplySchemaMigrationsAsync(db, ct);
 
                 // ivfflat-индекс для векторного поиска (best-effort).
                 await db.Database.ExecuteSqlRawAsync(
@@ -183,6 +181,45 @@ public static class ServiceCollectionExtensions
         var (email, password) = await auth.EnsureOwnerAsync(ct);
         if (!string.IsNullOrEmpty(password))
             Console.WriteLine($"[akasha] owner created: {email} / {password}  (change via AKASHA_OWNER_PASSWORD env)");
+    }
+
+    /// <summary>
+    /// Версионные идемпотентные миграции схемы (таблица <c>schema_migrations</c>).
+    /// <c>EnsureCreated</c> создаёт свежую БД; этот метод догоняет уже существующую.
+    /// EF-миграции здесь не годятся: модель различается для SQLite/Postgres
+    /// (vector-колонка, DateTimeOffset-конвертеры), т.е. нужен отдельный набор под каждый провайдер.
+    /// </summary>
+    private static async Task<bool> ApplySchemaMigrationsAsync(AkashaDbContext db, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+              "Id" TEXT NOT NULL PRIMARY KEY,
+              "AppliedAt" TEXT NOT NULL
+            );
+            """, ct);
+
+        var applied = (await db.Database.SqlQueryRaw<string>(
+                """SELECT "Id" AS "Value" FROM schema_migrations""")
+            .ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
+
+        var steps = new List<(string Id, Func<AkashaDbContext, CancellationToken, Task<bool>> Run)>
+        {
+            ("0001_context_notes", async (d, c) => { await EnsureContextTableAsync(d, c); return false; }),
+        };
+        if (!db.IsSqlite)
+            steps.Add(("0002_embedding_vector", MigrateEmbeddingColumnAsync));
+
+        var migrated = false;
+        foreach (var (id, run) in steps)
+        {
+            if (applied.Contains(id)) continue;
+            migrated |= await run(db, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                """INSERT INTO schema_migrations ("Id","AppliedAt") VALUES ({0},{1}) ON CONFLICT ("Id") DO NOTHING""",
+                id, DateTimeOffset.UtcNow.ToString("O"));
+        }
+        return migrated;
     }
 
     /// <summary>Старая схема (колонка Embedding как text) → vector(384). true, если сконвертировали.</summary>
