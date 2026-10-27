@@ -71,49 +71,9 @@ public class SearchService
         if (mode is "vector" or "hybrid")
         {
             var qv = _embeddings.Embed(query);
-            if (_db.IsSqlite)
-            {
-                vecRanked = await InMemoryVectorAsync(ct);
-            }
-            else
-            {
-                try
-                {
-                    // Postgres + pgvector: упорядочивание по косинусному расстоянию средствами EF.
-                    var qvec = new Vector(qv);
-                    var candidates = await Base()
-                        .Where(e => e.Embedding != null)
-                        .OrderBy(e => e.Embedding!.CosineDistance(qvec))
-                        .Take(100)
-                        .ToListAsync(ct);
-                    if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
-                    foreach (var e in candidates)
-                    {
-                        if (e.Embedding is null) continue;
-                        var cos = 1.0 - e.Embedding.CosineDistance(qvec);
-                        if (cos > 0.01) vecRanked.Add((e, cos));
-                    }
-                }
-                catch
-                {
-                    // pgvector-путь недоступен (тип/оператор не зарегистрирован) — считаем в памяти.
-                    vecRanked = await InMemoryVectorAsync(ct);
-                }
-            }
-
-            async Task<List<(Entry e, double score)>> InMemoryVectorAsync(CancellationToken token)
-            {
-                var list = new List<(Entry e, double score)>();
-                var candidates = await Base().ToListAsync(token);
-                if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
-                foreach (var e in candidates)
-                {
-                    if (e.Embedding is null) continue;
-                    var cos = HashedNgramEmbeddings.Cosine(qv, e.Embedding.ToArray());
-                    if (cos > 0.01) list.Add((e, cos));
-                }
-                return list.OrderByDescending(x => x.score).Take(100).ToList();
-            }
+            var candidates = await LoadVectorCandidatesAsync(Base(), qv, ct);
+            if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
+            vecRanked = RankVectors(candidates, qv);
         }
 
         // ── RRF fusion: score(d) = Σ 1/(60 + rank_i(d)) ──
@@ -143,6 +103,73 @@ public class SearchService
                 x.e.ProjectId is { } pid && slugs.TryGetValue(pid, out var slug) ? slug : null))
             .ToList();
     }
+
+    /// <summary>
+    /// Кандидаты для векторного ранга. Postgres — prefilter по pgvector (top-500), SQLite — все.
+    /// При любой ошибке pgvector-пути — грузим всё в память.
+    /// </summary>
+    private async Task<List<Entry>> LoadVectorCandidatesAsync(IQueryable<Entry> baseQuery, float[] qv, CancellationToken ct)
+    {
+        if (_db.IsSqlite) return await baseQuery.Where(e => e.Embedding != null).ToListAsync(ct);
+        try
+        {
+            var qvec = new Vector(qv);
+            return await baseQuery
+                .Where(e => e.Embedding != null)
+                .OrderBy(e => e.Embedding!.CosineDistance(qvec))
+                .Take(500)
+                .ToListAsync(ct);
+        }
+        catch
+        {
+            return await baseQuery.Where(e => e.Embedding != null).ToListAsync(ct);
+        }
+    }
+
+    /// <summary>Слишком короткие тексты дают «hub» (близки ко всему) — их находит FTS.</summary>
+    private const int MinVectorWords = 4;
+
+    /// <summary>
+    /// Ранжирование cosine с центрированием по среднему вектору корпуса
+    /// (устраняет анизотропию/«hubness» коротких записей).
+    /// </summary>
+    private static List<(Entry e, double score)> RankVectors(List<Entry> candidates, float[] qv)
+    {
+        var docs = candidates
+            .Where(e => e.Embedding is not null && DistinctWords(e.Title + " " + e.Body) >= MinVectorWords)
+            .ToList();
+        if (docs.Count == 0) return new();
+
+        var dim = qv.Length;
+        var mean = new double[dim];
+        foreach (var d in docs)
+        {
+            var v = d.Embedding!.ToArray();
+            for (int i = 0; i < dim && i < v.Length; i++) mean[i] += v[i];
+        }
+        for (int i = 0; i < dim; i++) mean[i] /= docs.Count;
+
+        float[] Center(float[] v)
+        {
+            var r = new float[dim];
+            for (int i = 0; i < dim && i < v.Length; i++) r[i] = (float)(v[i] - mean[i]);
+            return r;
+        }
+
+        var qc = Center(qv);
+        var list = new List<(Entry e, double score)>();
+        foreach (var d in docs)
+        {
+            var cos = HashedNgramEmbeddings.Cosine(qc, Center(d.Embedding!.ToArray()));
+            if (cos > 0.01) list.Add((d, cos));
+        }
+        return list.OrderByDescending(x => x.score).Take(100).ToList();
+    }
+
+    private static int DistinctWords(string s) =>
+        string.IsNullOrWhiteSpace(s) ? 0
+        : s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.ToLowerInvariant()).Distinct().Count();
 
     private static string MakeSnippet(string body, string[] terms)
     {
