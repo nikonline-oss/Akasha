@@ -86,10 +86,10 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudSelect T="string" @bind-Value="_kind" Label="Тип (kind)" Variant="Variant.Outlined" Clearable="true">
+                <MudSelect T="string" @bind-Value="_kind" Label="@Loc.T("scripts.kind")" Variant="Variant.Outlined" Clearable="true">
                     @foreach (var k in EntryKinds.All)
                     {
-                        <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
+                        <MudSelectItem T="string" Value="@k">@Loc.Kind(k)</MudSelectItem>
                     }
                 </MudSelect>
             </MudItem>

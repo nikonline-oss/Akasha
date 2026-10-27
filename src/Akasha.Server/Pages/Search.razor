@@ -13,7 +13,7 @@
             <MudSelect T="string" @bind-Value="_kind" Label="@Loc.T("search.kind")" Clearable="true">
                 @foreach (var k in EntryKinds.All)
                 {
-                    <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
+                    <MudSelectItem T="string" Value="@k">@Loc.Kind(k)</MudSelectItem>
                 }
             </MudSelect>
         </MudItem>
@@ -30,7 +30,7 @@
     <MudList T="string">
         @foreach (var h in _hits)
         {
-            <MudListItem T="string" Icon="@KindIcon(h.Kind)" SecondaryText="@($"{h.Kind} · score {h.Score:F2}")">
+            <MudListItem T="string" Icon="@KindIcon(h.Kind)" SecondaryText="@($"{Loc.Kind(h.Kind)} · score {h.Score:F2}")">
                 <div class="d-flex flex-column">
                     <MudLink Href="@($"/entries/{h.Id}")" Typo="Typo.subtitle1">@h.Title</MudLink>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">@h.Snippet</MudText>

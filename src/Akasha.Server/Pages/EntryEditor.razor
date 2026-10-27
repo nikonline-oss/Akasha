@@ -15,10 +15,10 @@
                 <MudTextField @bind-Value="_title" Label="Заголовок" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="6">
-                <MudSelect T="string" @bind-Value="_kind" Label="Тип" Variant="Variant.Outlined">
+                <MudSelect T="string" @bind-Value="_kind" Label="@Loc.T("entry.kind")" Variant="Variant.Outlined">
                     @foreach (var k in EntryKinds.All)
                     {
-                        <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
+                        <MudSelectItem T="string" Value="@k">@Loc.Kind(k)</MudSelectItem>
                     }
                 </MudSelect>
             </MudItem>
