@@ -1,16 +1,16 @@
 @page "/search"
 @inject SearchService SearchSvc
 
-<MudText Typo="Typo.h5" GutterBottom="true">Поиск</MudText>
+<MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.search")</MudText>
 
 <MudPaper Class="pa-4 mb-4">
     <MudGrid Spacing="3">
         <MudItem xs="12" md="7">
-            <MudTextField @bind-Value="_query" Placeholder="Поисковый запрос…" Label="Запрос"
+            <MudTextField @bind-Value="_query" Placeholder="@Loc.T("search.placeholder")" Label="@Loc.T("search.query")"
                           Immediate="false" OnKeyDown="OnKeyDown" />
         </MudItem>
         <MudItem xs="6" md="2">
-            <MudSelect T="string" @bind-Value="_kind" Label="Тип" Clearable="true">
+            <MudSelect T="string" @bind-Value="_kind" Label="@Loc.T("search.kind")" Clearable="true">
                 @foreach (var k in EntryKinds.All)
                 {
                     <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
@@ -19,7 +19,7 @@
         </MudItem>
         <MudItem xs="6" md="3" Class="d-flex align-center gap-2">
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Search" OnClick="Run">Искать</MudButton>
+                       StartIcon="@Icons.Material.Filled.Search" OnClick="Run">@Loc.T("search.button")</MudButton>
         </MudItem>
     </MudGrid>
 </MudPaper>

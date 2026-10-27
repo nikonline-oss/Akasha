@@ -58,6 +58,7 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddAkasha(this IServiceCollection services, IConfiguration cfg, bool portable)
     {
+        services.AddSingleton<AppState>();
         var conn = portable
             ? cfg["AKASHA_SQLITE_PATH"] ?? "data/akasha.db"
             : cfg.GetConnectionString("Akasha") ?? cfg["AKASHA_DATABASE_URL"] ?? "Host=localhost;Database=akasha;Username=akasha;Password=akasha";
