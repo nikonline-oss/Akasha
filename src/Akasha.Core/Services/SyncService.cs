@@ -2,6 +2,7 @@ using System.Text.Json;
 using Akasha.Core.Data;
 using Akasha.Core.Models;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace Akasha.Core.Services;
 
@@ -174,7 +175,7 @@ public class SyncService
             e.CreatedBy = data.TryGetProperty("created_by", out var cb) && cb.ValueKind == JsonValueKind.String
                 ? cb.GetString() : $"device:{deviceId}";
             e.UpdatedAt = remoteUpdated;
-            e.Embedding = _embeddings.Embed(e.Title + "\n" + e.Body);
+            e.Embedding = new Vector(_embeddings.Embed(e.Title + "\n" + e.Body));
             e.StateHash = ContentHash.Of(e);
             if (data.TryGetProperty("deleted_at", out var del) && del.ValueKind != JsonValueKind.Null &&
                 DateTimeOffset.TryParse(del.ToString(), out var dt))
@@ -218,7 +219,7 @@ public class SyncService
         ApplyEntryFields(local, data);
         local.UpdatedAt = remoteUpdated;
         local.Version += 1;
-        local.Embedding = _embeddings.Embed(local.Title + "\n" + local.Body);
+        local.Embedding = new Vector(_embeddings.Embed(local.Title + "\n" + local.Body));
         local.StateHash = ContentHash.Of(local);
         if (ch.Op == "delete") local.DeletedAt = DateTimeOffset.UtcNow;
         else if (data.TryGetProperty("deleted_at", out var d2) && d2.ValueKind != JsonValueKind.Null)

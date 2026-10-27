@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Akasha.Core.Data;
 using Akasha.Core.Models;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace Akasha.Core.Services;
 
@@ -69,15 +70,37 @@ public class SearchService
         if (mode is "vector" or "hybrid")
         {
             var qv = _embeddings.Embed(query);
-            var candidates = await Base().ToListAsync(ct);
-            if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
-            foreach (var e in candidates)
+            if (_db.IsSqlite)
             {
-                if (e.Embedding is null || e.Embedding.Length == 0) continue;
-                var cos = HashedNgramEmbeddings.Cosine(qv, e.Embedding);
-                if (cos > 0.01) vecRanked.Add((e, cos));
+                // SQLite: косинус в памяти (нет pgvector).
+                var candidates = await Base().ToListAsync(ct);
+                if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
+                foreach (var e in candidates)
+                {
+                    if (e.Embedding is null) continue;
+                    var cos = HashedNgramEmbeddings.Cosine(qv, e.Embedding.ToArray());
+                    if (cos > 0.01) vecRanked.Add((e, cos));
+                }
+                vecRanked = vecRanked.OrderByDescending(x => x.score).Take(100).ToList();
             }
-            vecRanked = vecRanked.OrderByDescending(x => x.score).Take(100).ToList();
+            else
+            {
+                // Postgres + pgvector: SQL-упорядочивание по косинусному расстоянию (оператор <=>).
+                var vecStr = "[" + string.Join(",", qv.Select(f => f.ToString("R"))) + "]";
+                var candidates = await _db.Entries
+                    .FromSqlRaw(
+                        "SELECT * FROM entries WHERE deleted_at IS NULL AND embedding IS NOT NULL ORDER BY embedding <=> CAST({0} AS vector) LIMIT 100",
+                        vecStr)
+                    .AsNoTracking()
+                    .ToListAsync(ct);
+                if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
+                foreach (var e in candidates)
+                {
+                    if (e.Embedding is null) continue;
+                    var cos = HashedNgramEmbeddings.Cosine(qv, e.Embedding.ToArray());
+                    if (cos > 0.01) vecRanked.Add((e, cos));
+                }
+            }
         }
 
         // ── RRF fusion: score(d) = Σ 1/(60 + rank_i(d)) ──
@@ -157,7 +180,7 @@ public class EmbeddingWorker : BackgroundWorkerBase
                 using var db = _dbFactory.Create();
                 var entry = await db.Entries.FirstOrDefaultAsync(e => e.Id == id, ct);
                 if (entry is null || entry.DeletedAt is not null) continue;
-                entry.Embedding = _embeddings.Embed(entry.Title + "\n" + entry.Body);
+                entry.Embedding = new Vector(_embeddings.Embed(entry.Title + "\n" + entry.Body));
                 entry.StateHash = ContentHash.Of(entry);
                 await db.SaveChangesAsync(ct);
             }

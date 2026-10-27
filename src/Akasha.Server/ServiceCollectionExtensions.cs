@@ -5,6 +5,7 @@ using Akasha.Server.Api;
 using Akasha.Server.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Pgvector;
 
 namespace Akasha.Server;
 
@@ -39,7 +40,7 @@ public class EmbeddingWorkerService : BackgroundService
                 using var db = _dbFactory.Create();
                 var entry = await db.Entries.FirstOrDefaultAsync(e => e.Id == id, stoppingToken);
                 if (entry is null || entry.DeletedAt is not null) continue;
-                entry.Embedding = _embeddings.Embed(entry.Title + "\n" + entry.Body);
+                entry.Embedding = new Vector(_embeddings.Embed(entry.Title + "\n" + entry.Body));
                 entry.StateHash = ContentHash.Of(entry);
                 await db.SaveChangesAsync(stoppingToken);
             }
@@ -129,14 +130,17 @@ public static class ServiceCollectionExtensions
         {
             try
             {
-                await db.Database.EnsureCreatedAsync(ct);
-                // pgvector: extension (best-effort, требует прав; в docker-образе pgvector предуставлен)
+                // pgvector: расширение создаём ДО EnsureCreated, т.к. колонка embedding имеет тип vector(384).
                 await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS vector;", ct);
+                await db.Database.EnsureCreatedAsync(ct);
+                // ivfflat-индекс для векторного поиска (best-effort).
+                await db.Database.ExecuteSqlRawAsync(
+                    "CREATE INDEX IF NOT EXISTS ix_entries_embedding ON entries USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);", ct);
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
-                    "EnsureCreated failed — run migrations manually (docker-compose initializes pgvector image).");
+                    "EnsureCreated / pgvector failed — install pgvector and run migrations manually (docker-compose initializes pgvector image).");
             }
         }
 
