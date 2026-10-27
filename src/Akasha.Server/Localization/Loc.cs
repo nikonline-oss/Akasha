@@ -60,6 +60,7 @@ public static class Loc
         ["common.close"] = "Закрыть",
         // страницы
         ["page.notfound"] = "Страница не найдена",
+        ["page.error"] = "Ошибка на странице",
         ["page.entry"] = "Запись",
         ["page.context"] = "Контекст агента",
         ["context.hint"] = "Рабочая область, куда AI-агенты пишут напрямую, без апрувов. Основное хранилище по-прежнему требует одобрения.",
@@ -264,6 +265,7 @@ public static class Loc
         ["common.close"] = "Close",
         // pages
         ["page.notfound"] = "Page not found",
+        ["page.error"] = "Page error",
         ["page.entry"] = "Entry",
         ["page.context"] = "Agent context",
         ["context.hint"] = "A scratch area where AI agents write directly, without approval. The main vault still requires approval.",

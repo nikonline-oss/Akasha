@@ -7,6 +7,7 @@ using Akasha.Core.Query;
 using Akasha.Core.Services;
 using Akasha.Server.Auth;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Pgvector.EntityFrameworkCore;
 
 namespace Akasha.Server.Api;
@@ -223,17 +224,20 @@ public class DbContextFactory : IDbContextFactoryLike
 {
     private readonly string _connectionString;
     private readonly bool _sqlite;
+    private readonly NpgsqlDataSource? _dataSource;
 
-    public DbContextFactory(string connectionString, bool sqlite)
+    public DbContextFactory(string connectionString, bool sqlite, NpgsqlDataSource? dataSource = null)
     {
         _connectionString = connectionString;
         _sqlite = sqlite;
+        _dataSource = dataSource;
     }
 
     public AkashaDbContext Create()
     {
         var opts = new DbContextOptionsBuilder<AkashaDbContext>();
         if (_sqlite) opts.UseSqlite(_connectionString);
+        else if (_dataSource is not null) opts.UseNpgsql(_dataSource, o => o.UseVector());
         else opts.UseNpgsql(_connectionString, o => o.UseVector());
         return new AkashaDbContext(opts.Options);
     }

@@ -73,33 +73,46 @@ public class SearchService
             var qv = _embeddings.Embed(query);
             if (_db.IsSqlite)
             {
-                // SQLite: косинус в памяти (нет pgvector).
-                var candidates = await Base().ToListAsync(ct);
+                vecRanked = await InMemoryVectorAsync(ct);
+            }
+            else
+            {
+                try
+                {
+                    // Postgres + pgvector: упорядочивание по косинусному расстоянию средствами EF.
+                    var qvec = new Vector(qv);
+                    var candidates = await Base()
+                        .Where(e => e.Embedding != null)
+                        .OrderBy(e => e.Embedding!.CosineDistance(qvec))
+                        .Take(100)
+                        .ToListAsync(ct);
+                    if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
+                    foreach (var e in candidates)
+                    {
+                        if (e.Embedding is null) continue;
+                        var cos = 1.0 - e.Embedding.CosineDistance(qvec);
+                        if (cos > 0.01) vecRanked.Add((e, cos));
+                    }
+                }
+                catch
+                {
+                    // pgvector-путь недоступен (тип/оператор не зарегистрирован) — считаем в памяти.
+                    vecRanked = await InMemoryVectorAsync(ct);
+                }
+            }
+
+            async Task<List<(Entry e, double score)>> InMemoryVectorAsync(CancellationToken token)
+            {
+                var list = new List<(Entry e, double score)>();
+                var candidates = await Base().ToListAsync(token);
                 if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
                 foreach (var e in candidates)
                 {
                     if (e.Embedding is null) continue;
                     var cos = HashedNgramEmbeddings.Cosine(qv, e.Embedding.ToArray());
-                    if (cos > 0.01) vecRanked.Add((e, cos));
+                    if (cos > 0.01) list.Add((e, cos));
                 }
-                vecRanked = vecRanked.OrderByDescending(x => x.score).Take(100).ToList();
-            }
-            else
-            {
-                // Postgres + pgvector: упорядочивание по косинусному расстоянию средствами EF.
-                var qvec = new Vector(qv);
-                var candidates = await Base()
-                    .Where(e => e.Embedding != null)
-                    .OrderBy(e => e.Embedding!.CosineDistance(qvec))
-                    .Take(100)
-                    .ToListAsync(ct);
-                if (activeTags.Count > 0) candidates = candidates.Where(TagMatch).ToList();
-                foreach (var e in candidates)
-                {
-                    if (e.Embedding is null) continue;
-                    var cos = 1.0 - e.Embedding.CosineDistance(qvec);
-                    if (cos > 0.01) vecRanked.Add((e, cos));
-                }
+                return list.OrderByDescending(x => x.score).Take(100).ToList();
             }
         }
 
