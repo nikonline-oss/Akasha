@@ -266,9 +266,10 @@ docker compose build && docker compose up -d
 | `AKASHA_TELEGRAM_BOT_TOKEN` / `AKASHA_TELEGRAM_CHAT_ID` | server | Telegram-бот аппрувов (устаревшие алиасы `AKASHA_TG_*`) |
 | `AKASHA_SERVER_URL` / `AKASHA_DEVICE_KEY` / `AKASHA_DEVICE_ID` | portable | параметры синхронизации (можно хранить в `data/sync-config.json` через UI) |
 | `ASPNETCORE_URLS` | server | адрес/порт прослушивания (в Docker уже задан `http://+:8080`) |
-| `AKASHA_ONNX_MODEL` | оба | путь к `bge-micro-v2.onnx` — включает ONNX-эмбеддинги (иначе hashed-ngram fallback) |
-| `AKASHA_ONNX_VOCAB` | оба | путь к `vocab.txt` (default: рядом с моделью) |
+| `AKASHA_ONNX_MODEL` | оба | путь к `.onnx` — включает ONNX-эмбеддинги; размерность берётся из модели |
+| `AKASHA_ONNX_VOCAB` | оба | `vocab.txt` (WordPiece) или `sentencepiece.bpe.model` (XLM-R) |
 | `AKASHA_ONNX_MAXLEN` | оба | длина последовательности для ONNX (default 256, диапазон 8–512) |
+| `AKASHA_EMBEDDING_DIM` | оба | размерность fallback-эмбеддингов без модели (default 384) |
 | `AKASHA_AI_API_KEY` | оба | ключ LLM — включает AI-assist «✨ Помочь с запросом» в конструкторе скриптов |
 | `AKASHA_AI_MODEL` | оба | модель LLM (default `gpt-4o-mini`) |
 | `AKASHA_AI_ENDPOINT` | оба | базовый URL OpenAI-совместимого API (default `https://api.openai.com/v1`) |
@@ -317,14 +318,24 @@ AKASHA_KEY=ak_... ./scripts/verify.sh     # + API-проверки (auth, search
 
 ### ONNX-модель (опционально)
 
-`bge-micro-v2` на HuggingFace сейчас отдаёт 401; рабочий аналог той же размерности (384) —
-`Xenova/bge-small-en-v1.5`:
+Размерность эмбеддингов берётся **из самой модели** (last hidden size) и применяется к колонке
+`entries."Embedding"` (`vector(N)`) через миграцию `0003_embedding_dim`: при смене модели колонка
+пересоздаётся, старые эмбеддинги обнуляются и пересчитываются фоновым worker'ом.
+
+**Для русского контента** (проверено бенчмарком — 5/5) — мультиязычная `distiluse` (768 dim, ~135 МБ):
 
 ```bash
 mkdir -p models && cd models
+curl -L -o model.onnx https://huggingface.co/Xenova/distiluse-base-multilingual-cased-v2/resolve/main/onnx/model_quantized.onnx
+curl -L -o vocab.txt https://huggingface.co/Xenova/distiluse-base-multilingual-cased-v2/resolve/main/vocab.txt
+cd ..
+```
+
+**Для англоязычного контента** — `Xenova/bge-small-en-v1.5` (384 dim, ~34 МБ):
+
+```bash
 curl -L -o model.onnx https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/onnx/model_quantized.onnx
 curl -L -o vocab.txt https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/vocab.txt
-cd ..
 ```
 
 В `docker-compose.yml`:
@@ -336,6 +347,15 @@ cd ..
       AKASHA_ONNX_MODEL: /app/models/model.onnx
       AKASHA_ONNX_VOCAB: /app/models/vocab.txt
 ```
+
+После старта — **Настройки → «Пересчитать все»** (или `POST /api/v1/admin/embeddings/recompute?all=true`).
+
+> Без модели работает детерминированный hashed-ngram fallback; его размерность задаётся
+> `AKASHA_EMBEDDING_DIM` (default 384).
+>
+> Проверялись, но **не рекомендованы** для русского: `bge-small-en-v1.5` (англоязычная),
+> `paraphrase-multilingual-MiniLM-L12-v2` и `multilingual-e5-small` — слабые зазоры на коротких
+> текстах (подробности в PR #46).
 
 
 

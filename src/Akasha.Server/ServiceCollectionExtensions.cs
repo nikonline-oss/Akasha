@@ -73,6 +73,31 @@ public static class ServiceCollectionExtensions
 
         var cs = useSqlite && !conn.Contains('=') ? $"Data Source={conn}" : conn;
 
+        // Эмбеддинги: ONNX-модель (opt-in) либо детерминированный fallback.
+        // Размерность берём из модели (auto), иначе AKASHA_EMBEDDING_DIM, иначе 384 —
+        // от неё зависит тип колонки entries."Embedding" (vector(N)).
+        IEmbeddingService? embeddings = null;
+        var onnxModel = cfg["AKASHA_ONNX_MODEL"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_MODEL");
+        if (!string.IsNullOrWhiteSpace(onnxModel))
+        {
+            var vocab = cfg["AKASHA_ONNX_VOCAB"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_VOCAB")
+                        ?? Path.Combine(Path.GetDirectoryName(onnxModel) ?? ".", "vocab.txt");
+            var maxLenRaw = cfg["AKASHA_ONNX_MAXLEN"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_MAXLEN");
+            var maxLen = int.TryParse(maxLenRaw, out var ml) ? ml : 256;
+            try { embeddings = new OnnxEmbeddingService(onnxModel, vocab, maxLen); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[akasha] ONNX-эмбеддинги не загрузились ({onnxModel}): {ex.Message} — fallback на hashed-ngram.");
+            }
+        }
+        if (embeddings is null)
+        {
+            var dimRaw = cfg["AKASHA_EMBEDDING_DIM"] ?? Environment.GetEnvironmentVariable("AKASHA_EMBEDDING_DIM");
+            var dim = int.TryParse(dimRaw, out var dv) && dv > 0 ? dv : OnnxEmbeddingService.DefaultDim;
+            embeddings = new HashedNgramEmbeddings(dim);
+        }
+        AkashaDbContext.EmbeddingDim = embeddings.Dimension;
+
         // Npgsql data source с зарегистрированным типом vector. Нужен на уровне ADO.NET:
         // без него параметры Vector уходят как text, и Postgres отвергает оператор <=> (500).
         NpgsqlDataSource? pgDataSource = null;
@@ -95,27 +120,7 @@ public static class ServiceCollectionExtensions
         // portable-режим включает localhost-owner в AuthMiddleware (актуально и для Akasha.Portable host'а)
         if (portable)
             services.AddSingleton(new AuthMiddlewareOptions(true));
-        services.AddSingleton<IEmbeddingService>(sp =>
-        {
-            // ONNX/BGE-Micro-V2 — opt-in через AKASHA_ONNX_MODEL; иначе детерминированный fallback.
-            var model = cfg["AKASHA_ONNX_MODEL"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_MODEL");
-            if (string.IsNullOrWhiteSpace(model)) return new HashedNgramEmbeddings();
-
-            var vocab = cfg["AKASHA_ONNX_VOCAB"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_VOCAB")
-                        ?? Path.Combine(Path.GetDirectoryName(model) ?? ".", "vocab.txt");
-            var maxLenRaw = cfg["AKASHA_ONNX_MAXLEN"] ?? Environment.GetEnvironmentVariable("AKASHA_ONNX_MAXLEN");
-            var maxLen = int.TryParse(maxLenRaw, out var ml) ? ml : 256;
-            try
-            {
-                return new OnnxEmbeddingService(model, vocab, maxLen);
-            }
-            catch (Exception ex)
-            {
-                sp.GetService<ILoggerFactory>()?.CreateLogger("Akasha.Embeddings")
-                    .LogWarning(ex, "ONNX-эмбеддинги не загрузились ({Model}); fallback на hashed-ngram.", model);
-                return new HashedNgramEmbeddings();
-            }
-        });
+        services.AddSingleton<IEmbeddingService>(embeddings);
         services.AddSingleton<EmbeddingQueue>();
         services.AddSingleton<QueryEngine>();
         services.AddSingleton<RateLimiter>();
@@ -225,7 +230,10 @@ public static class ServiceCollectionExtensions
             ("0001_context_notes", async (d, c) => { await EnsureContextTableAsync(d, c); return false; }),
         };
         if (!db.IsSqlite)
+        {
             steps.Add(("0002_embedding_vector", MigrateEmbeddingColumnAsync));
+            steps.Add(("0003_embedding_dim", MigrateEmbeddingDimensionAsync));
+        }
 
         var migrated = false;
         foreach (var (id, run) in steps)
@@ -237,6 +245,26 @@ public static class ServiceCollectionExtensions
                 id, DateTimeOffset.UtcNow.ToString("O"));
         }
         return migrated;
+    }
+
+    /// <summary>
+    /// Привести тип колонки <c>entries."Embedding"</c> к текущей размерности модели
+    /// (<see cref="AkashaDbContext.EmbeddingDim"/>). Значения несовместимы — обнуляем,
+    /// дальше их пересчитает фоновый worker.
+    /// </summary>
+    private static async Task<bool> MigrateEmbeddingDimensionAsync(AkashaDbContext db, CancellationToken ct)
+    {
+        var dim = AkashaDbContext.EmbeddingDim;
+        var type = await db.Database.SqlQueryRaw<string>(
+                "SELECT format_type(atttypid, atttypmod) AS \"Value\" FROM pg_attribute " +
+                "WHERE attrelid = 'entries'::regclass AND attname = 'Embedding'")
+            .FirstOrDefaultAsync(ct);
+        if (type is null || string.Equals(type, $"vector({dim})", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        await db.Database.ExecuteSqlRawAsync(
+            $"ALTER TABLE entries ALTER COLUMN \"Embedding\" TYPE vector({dim}) USING NULL;", ct);
+        return true;
     }
 
     /// <summary>Старая схема (колонка Embedding как text) → vector(384). true, если сконвертировали.</summary>
