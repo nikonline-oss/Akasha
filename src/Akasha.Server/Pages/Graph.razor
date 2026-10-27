@@ -1,9 +1,12 @@
 @page "/graph"
 @inject IDbContextFactoryLike Dbf
+@inject IJSRuntime JsRuntime
+@inject NavigationManager Nav
+@implements IAsyncDisposable
 
 <MudText Typo="Typo.h5" GutterBottom="true">Граф связей</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-    Узлы — записи, рёбра — связи (mentions / supersedes / contradicts / derived_from). Клик по узлу открывает запись.
+    Узлы — записи, рёбра — связи (mentions / supersedes / contradicts / derived_from). Перетаскивай и масштабируй; клик по узлу открывает запись.
 </MudText>
 
 @if (_loading)
@@ -16,49 +19,29 @@ else if (_nodes.Count == 0)
 }
 else
 {
-    <MudPaper Class="pa-2" Style="overflow:auto;">
-        <svg width="@_width" height="@_height" style="min-width:@(_width)px">
-            @foreach (var e in _edges)
-            {
-                var a = _pos[e.From];
-                var b = _pos[e.To];
-                <line x1="@a.X" y1="@a.Y" x2="@b.X" y2="@b.Y" stroke="#9a7fd0" stroke-width="1.5" opacity="0.7" />
-                var mx = (a.X + b.X) / 2; var my = (a.Y + b.Y) / 2;
-                <svg x="@mx" y="@my" width="120" height="14"><text font-size="9" fill="#8a8a8a" text-anchor="middle">@e.Relation</text></svg>
-            }
-            @foreach (var n in _nodes)
-            {
-                var p = _pos[n.Id];
-                <g style="cursor:pointer" @onclick="() => Open(n.Id)">
-                    <circle cx="@p.X" cy="@p.Y" r="14" fill="@KindColor(n.Kind)" stroke="#C9A227" stroke-width="1.5" />
-                    <svg x="@(p.X - 70)" y="@(p.Y + 18)" width="140" height="16"><text font-size="11" fill="#333" text-anchor="middle">@Trunc(n.Title, 24)</text></svg>
-                </g>
-            }
-        </svg>
+    <MudPaper Class="pa-2" Elevation="1">
+        <div id="graph-container" style="width:100%; height:70vh; min-height:420px;"></div>
     </MudPaper>
-
-    <div class="d-flex gap-4 mt-3 flex-wrap">
-        @foreach (var k in EntryKinds.All)
-        {
-            <div class="d-flex align-center gap-1">
-                <MudIcon Icon="@Icons.Material.Filled.Circle" Style="@($"color:{KindColor(k)}")" Size="Size.Small" />
-                <MudText Typo="Typo.body2">@k</MudText>
-            </div>
-        }
-    </div>
 }
 
+<div class="d-flex gap-4 mt-3 flex-wrap">
+    @foreach (var k in EntryKinds.All)
+    {
+        <div class="d-flex align-center gap-1">
+            <MudIcon Icon="@Icons.Material.Filled.Circle" Style="@($"color:{KindColor(k)}")" Size="Size.Small" />
+            <MudText Typo="Typo.body2">@k</MudText>
+        </div>
+    }
+</div>
+
 @code {
+    private sealed record GraphNode(Guid Id, string Title, string Kind);
+    private sealed record GraphEdge(Guid From, Guid To, string Relation);
+
     private bool _loading = true;
-    private int _width = 900, _height = 600;
-
-    private sealed record Node(Guid Id, string Title, string Kind);
-    private sealed record Edge(Guid From, Guid To, string Relation);
-    private sealed record Pos(double X, double Y);
-
-    private List<Node> _nodes = new();
-    private List<Edge> _edges = new();
-    private Dictionary<Guid, Pos> _pos = new();
+    private List<GraphNode> _nodes = new();
+    private List<GraphEdge> _edges = new();
+    private DotNetObjectReference<Graph>? _ref;
 
     protected override async Task OnInitializedAsync()
     {
@@ -66,80 +49,78 @@ else
         var entries = await db.Entries.AsNoTracking()
             .Where(e => e.DeletedAt == null)
             .OrderByDescending(e => e.UpdatedAt)
-            .Take(60)
+            .Take(120)
             .Select(e => new { e.Id, e.Title, e.Kind })
             .ToListAsync();
 
         var ids = entries.Select(e => e.Id).ToHashSet();
-        _nodes = entries.Select(e => new Node(e.Id, e.Title, e.Kind)).ToList();
+        _nodes = entries.Select(e => new GraphNode(e.Id, e.Title, e.Kind)).ToList();
 
         var links = await db.EntryLinks.AsNoTracking().ToListAsync();
-        // замыкаем граф: добавляем смежные узлы (до 60 всего)
-        var extra = new List<(Guid, string, string)>();
-        foreach (var l in links.Where(l => ids.Contains(l.FromId) ^ ids.Contains(l.ToId)))
-        {
-            var missing = ids.Contains(l.FromId) ? l.ToId : l.FromId;
-            if (!ids.Contains(missing) && extra.Count + ids.Count < 60)
-            {
-                var me = await db.Entries.AsNoTracking().FirstOrDefaultAsync(x => x.Id == missing);
-                if (me is not null) { extra.Add((me.Id, me.Title, me.Kind)); ids.Add(missing); }
-            }
-        }
-        foreach (var (id, title, kind) in extra) _nodes.Add(new Node(id, title, kind));
+        _edges = links
+            .Where(l => ids.Contains(l.FromId) && ids.Contains(l.ToId))
+            .Select(l => new GraphEdge(l.FromId, l.ToId, l.Relation))
+            .ToList();
 
-        _edges = links.Where(l => ids.Contains(l.FromId) && ids.Contains(l.ToId))
-                      .Select(l => new Edge(l.FromId, l.ToId, l.Relation)).ToList();
-
-        Layout();
         _loading = false;
     }
 
-    /// <summary>Простой концентрический layout: узлы с рёбрами — в центр, остальные — по кругу.</summary>
-    private void Layout()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var connected = _edges.SelectMany(e => new[] { e.From, e.To }).ToHashSet();
-        var core = _nodes.Where(n => connected.Contains(n.Id)).ToList();
-        var outer = _nodes.Where(n => !connected.Contains(n.Id)).ToList();
+        if (!firstRender || _loading || _nodes.Count == 0) return;
 
-        _pos.Clear();
-        double cx = _width / 2.0, cy = _height / 2.0;
-
-        int rings = Math.Max(1, (int)Math.Ceiling(core.Count / 12.0));
-        int idx = 0;
-        for (int r = 0; r < rings && idx < core.Count; r++)
+        _ref ??= DotNetObjectReference.Create(this);
+        var elements = new
         {
-            double radius = 70 + r * 90;
-            int inRing = Math.Min(12 + r * 6, core.Count - idx);
-            for (int i = 0; i < inRing; i++, idx++)
+            nodes = _nodes.Select(n => new
             {
-                double ang = 2 * Math.PI * i / inRing + r * 0.35;
-                _pos[core[idx].Id] = new Pos(cx + radius * Math.Cos(ang), cy + radius * Math.Sin(ang));
-            }
-        }
+                data = new { id = n.Id.ToString(), label = Trunc(n.Title, 32), color = KindColor(n.Kind) }
+            }).ToList(),
+            edges = _edges.Select(e => new
+            {
+                data = new
+                {
+                    id = $"{e.From}-{e.To}-{e.Relation}",
+                    source = e.From.ToString(),
+                    target = e.To.ToString(),
+                    relation = e.Relation
+                }
+            }).ToList()
+        };
 
-        double outerR = Math.Max(cx, cy) - 60;
-        for (int i = 0; i < outer.Count; i++)
+        try
         {
-            double ang = 2 * Math.PI * i / Math.Max(1, outer.Count);
-            _pos[outer[i].Id] = new Pos(cx + outerR * Math.Cos(ang), cy + outerR * Math.Sin(ang));
+            await JsRuntime.InvokeVoidAsync("akashaGraph.init", "graph-container", elements, _ref);
         }
+        catch (InvalidOperationException)
+        {
+            // Статическая предварительная отрисовка (prerender): JS ещё недоступен.
+            // Интерактивный клиентский рендер вызовет OnAfterRenderAsync повторно.
+        }
+    }
 
-        _height = (int)(cy + outerR + 40);
+    [JSInvokable]
+    public Task OpenEntry(Guid id)
+    {
+        Nav.NavigateTo($"/entries/{id}");
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _ref?.Dispose();
+        await ValueTask.CompletedTask;
     }
 
     private static string KindColor(string kind) => kind switch
     {
-        "note" => "#6C3FC5",
-        "decision" => "#C9A227",
-        "source" => "#2E8B57",
-        "comment" => "#4682B4",
-        "snippet" => "#B44B4B",
+        EntryKinds.Note => "#6C3FC5",
+        EntryKinds.Decision => "#C9A227",
+        EntryKinds.Source => "#2E8B57",
+        EntryKinds.Comment => "#4682B4",
+        EntryKinds.Snippet => "#B44B4B",
         _ => "#888888",
     };
 
     private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";
-
-    private void Open(Guid id) => Nav.NavigateTo($"/entries/{id}");
-
-    [Inject] private NavigationManager Nav { get; set; } = default!;
 }
