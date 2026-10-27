@@ -43,6 +43,29 @@ public class DiffService
 
         var (curTitle, curBody, curTags, curProject, curKind) = await LoadCurrentAsync(p, ct);
 
+        // Conflict-предложение из синхронизации: payload = { server: {...}, portable: {...} }.
+        if (p.Op == ProposalOp.Conflict)
+        {
+            var srv = p.Payload.TryGetProperty("server", out var sv) ? sv : default;
+            var ptb = p.Payload.TryGetProperty("portable", out var pt) ? pt : default;
+            string sTitle = srv.ValueKind == JsonValueKind.Object ? GetStr(srv, "title") ?? "" : "";
+            string pTitle = ptb.ValueKind == JsonValueKind.Object ? GetStr(ptb, "title") ?? "" : "";
+            string sBody = srv.ValueKind == JsonValueKind.Object ? GetStr(srv, "body") ?? "" : "";
+            string pBody = ptb.ValueKind == JsonValueKind.Object ? GetStr(ptb, "body") ?? "" : "";
+
+            return new ProposalDiff(
+                p.Op, p.Target, agentName, p.CreatedAt,
+                LineDiff(sTitle, pTitle),
+                LineDiff(sBody, pBody),
+                null,
+                new Dictionary<string, List<DiffLine>>
+                {
+                    ["server (текущая версия)"] = Prefix(("Title: " + sTitle + "\n" + sBody).Split('\n'), "ctx"),
+                    ["portable (входящая версия)"] = Prefix(("Title: " + pTitle + "\n" + pBody).Split('\n'), "ctx"),
+                },
+                null, null);
+        }
+
         var payload = p.Payload;
         string newTitle = GetStr(payload, "title") ?? curTitle ?? "";
         string newBody = GetStr(payload, "body") ?? curBody ?? "";

@@ -99,8 +99,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped(sp =>
         {
             var http = sp.GetRequiredService<IHttpContextAccessor>().HttpContext;
-            return http is not null && http.Items["principal"] is Akasha.Server.Auth.Principal p
-                ? p
+            if (http is not null && http.Items["principal"] is Akasha.Server.Auth.Principal p)
+                return p;
+            // portable без HTTP-контекста (stdio-MCP / CLI) — локальный владелец;
+            // server без контекста — fail-closed.
+            return portable
+                ? Akasha.Server.Auth.Principal.Owner()
                 : Akasha.Server.Auth.Principal.Anonymous();
         });
 

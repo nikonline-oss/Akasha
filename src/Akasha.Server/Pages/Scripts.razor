@@ -1,14 +1,21 @@
 @page "/scripts"
+@using System.Text.Json
+@using Akasha.Core.Query
 @inject AkashaDbContext Db
 @inject ScriptService ScriptSvc
+@inject QueryEngine Engine
+@inject ISnackbar Snackbar
 
 <MudText Typo="Typo.h5" GutterBottom="true">Скрипты (Structured JSON Queries)</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-4"
+           StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">Новый скрипт</MudButton>
 
 @if (_scripts.Count == 0)
 {
     <MudAlert Severity="Severity.Info">
-        Пока нет ни одного скрипта. Скрипты создаются владельцем здесь или предлагаются агентами через
-        <code>propose_script</code> (MCP).
+        Пока нет ни одного скрипта. Создай визуально через «Новый скрипт» или предложи агенту через
+        <code>akasha_propose_script</code> (MCP).
     </MudAlert>
 }
 
@@ -21,13 +28,19 @@
                     <MudText Typo="Typo.subtitle1">@s.Name</MudText>
                     <MudChip T="string" Size="Size.Small">v@s.Version · @s.OutputFormat</MudChip>
                 </div>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">@s.Slug · ttl @s.CacheTtl s</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@s.Slug · ttl @s.CacheTtl с</MudText>
                 @if (!string.IsNullOrEmpty(s.Description))
                 {
                     <MudText Typo="Typo.body2" Class="mt-1">@s.Description</MudText>
                 }
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Class="mt-3"
-                           StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="@(() => RunScript(s))">Запустить</MudButton>
+                <div class="d-flex flex-wrap gap-1 mt-3">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="@(() => RunScript(s))">Запустить</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenEdit(s))">Изменить</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Delete" OnClick="@(() => Delete(s))">Удалить</MudButton>
+                </div>
             </MudPaper>
         </MudItem>
     }
@@ -46,22 +59,164 @@
     </MudPaper>
 }
 
+@* ─── Создание (визуальный конструктор) ─────────────────────────────────────── *@
+<MudDialog @bind-visible="_createOpen" Options="_dialogOpts">
+    <TitleContent>Новый скрипт</TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_name" Label="Название" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_slug" Label="Slug (пусто = из названия)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_desc" Label="Описание" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect T="string" @bind-Value="_from" Label="Откуда (from)" Variant="Variant.Outlined">
+                    @foreach (var t in QueryTables)
+                    {
+                        <MudSelectItem T="string" Value="@t">@t</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect T="string" @bind-Value="_kind" Label="Тип (kind)" Variant="Variant.Outlined" Clearable="true">
+                    @foreach (var k in EntryKinds.All)
+                    {
+                        <MudSelectItem T="string" Value="@k">@k</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_project" Label="Проект (slug, необяз.)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_tags" Label="Теги (через запятую, необяз.)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <MudTextField T="string" @bind-Value="_limit" Label="Лимит" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <MudSelect T="string" @bind-Value="_orderField" Label="Сортировка по" Variant="Variant.Outlined" Clearable="true">
+                    @foreach (var f in OrderFields)
+                    {
+                        <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect T="string" @bind-Value="_orderDir" Label="Направление" Variant="Variant.Outlined">
+                    @foreach (var d in SortDirs)
+                    {
+                        <MudSelectItem T="string" Value="@d">@d</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect T="string" @bind-Value="_format" Label="Формат вывода" Variant="Variant.Outlined">
+                    @foreach (var f in OutputFormats.All)
+                    {
+                        <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField T="string" @bind-Value="_ttl" Label="Кэш TTL (сек)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_transform" Label="JMESPath transform (необяз.)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Предпросмотр запроса (JSON):</MudText>
+                <pre class="pa-2 rounded" style="background:#F4F1FA; overflow:auto; max-height:220px; font-size:0.8rem;">@PreviewJson()</pre>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _createOpen = false)">Отмена</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveCreate">Сохранить</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ─── Редактирование (JSON-редактор) ─────────────────────────────────────────── *@
+<MudDialog @bind-visible="_editOpen" Options="_dialogOpts">
+    <TitleContent>Скрипт: @_editSlug</TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editName" Label="Название" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editSlug" Label="Slug" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editDesc" Label="Описание" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editQuery" Label="Query (JSON)" Lines="12" Variant="Variant.Outlined"
+                              Style="font-family: monospace;" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editTransform" Label="JMESPath transform (необяз.)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="string" @bind-Value="_editFormat" Label="Формат вывода" Variant="Variant.Outlined">
+                    @foreach (var f in OutputFormats.All)
+                    {
+                        <MudSelectItem T="string" Value="@f">@f</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField T="string" @bind-Value="_editTtl" Label="Кэш TTL (сек)" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _editOpen = false)">Отмена</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEdit">Сохранить</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     private List<Script> _scripts = new();
+    private MudBlazor.DialogOptions _dialogOpts = new() { MaxWidth = MaxWidth.Large, CloseOnEscapeKey = true };
+    private static readonly string[] QueryTables = { "entries", "projects", "entry_links" };
+    private static readonly string[] OrderFields = { "updated_at", "created_at", "title" };
+    private static readonly string[] SortDirs = { "desc", "asc" };
+
+    // run
     private string? _result;
     private string _runName = "";
     private bool _cached;
     private double _elapsedMs;
+
+    // create (constructor)
+    private bool _createOpen;
+    private string _name = "", _slug = "", _desc = "", _from = "entries", _kind = "", _project = "", _tags = "";
+    private string _limit = "50", _orderField = "updated_at", _orderDir = "desc";
+    private string _format = "table", _ttl = "300", _transform = "";
+
+    // edit (json editor)
+    private bool _editOpen;
+    private Guid? _editId;
+    private string _editName = "", _editSlug = "", _editDesc = "", _editQuery = "{}";
+    private string _editFormat = "table", _editTtl = "300", _editTransform = "";
 
     protected override async Task OnInitializedAsync()
     {
         _scripts = await Db.Scripts.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
     }
 
+    private async Task Reload() =>
+        _scripts = await Db.Scripts.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
+
     private async Task RunScript(Script s)
     {
         _runName = s.Name;
-        var emptyParams = System.Text.Json.JsonDocument.Parse("{}").RootElement;
+        var emptyParams = JsonDocument.Parse("{}").RootElement;
         var res = await ScriptSvc.RunAsync(s.Slug, emptyParams);
         _result = Pretty(res.Result);
         _cached = res.Cached;
@@ -69,6 +224,132 @@
         StateHasChanged();
     }
 
-    private static string Pretty(System.Text.Json.JsonElement el) =>
+    // ─── конструктор: сборка query JSON из формы ───────────────────────────────
+    private JsonElement BuildQuery()
+    {
+        var where = new Dictionary<string, object>();
+        if (_from == "entries")
+        {
+            where["deleted_at"] = new Dictionary<string, object> { ["$is"] = "null" };
+            if (!string.IsNullOrWhiteSpace(_kind)) where["kind"] = _kind;
+            if (!string.IsNullOrWhiteSpace(_project)) where["project"] = _project.Trim();
+            var tags = _tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(t => t.Length > 0).ToList();
+            if (tags.Count > 0) where["tags"] = new Dictionary<string, object> { ["$contains_any"] = tags };
+        }
+
+        var q = new Dictionary<string, object>
+        {
+            ["from"] = _from,
+            ["where"] = where,
+            ["limit"] = int.TryParse(_limit, out var l) ? Math.Clamp(l, 1, QueryEngine.HardLimit) : 50,
+        };
+        if (!string.IsNullOrWhiteSpace(_orderField))
+        {
+            q["order_by"] = new object[]
+            {
+                new Dictionary<string, object> { ["field"] = _orderField, ["dir"] = _orderDir },
+            };
+        }
+        return JsonSerializer.SerializeToElement(q);
+    }
+
+    private string PreviewJson() => JsonSerializer.Serialize(BuildQuery(), new JsonSerializerOptions { WriteIndented = true });
+
+    private void OpenCreate()
+    {
+        _name = _slug = _desc = _tags = _project = _kind = _transform = "";
+        _from = "entries"; _limit = "50"; _orderField = "updated_at"; _orderDir = "desc";
+        _format = "table"; _ttl = "300";
+        _createOpen = true;
+    }
+
+    private async Task SaveCreate()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) { Snackbar.Add("Название обязательно", Severity.Warning); return; }
+        try
+        {
+            var query = BuildQuery();
+            Engine.ValidateQueryShape(query);
+            var slug = ProposalService.Slugify(string.IsNullOrWhiteSpace(_slug) ? _name : _slug);
+            if (await Db.Scripts.AnyAsync(s => s.Slug == slug))
+            {
+                Snackbar.Add($"Slug '{slug}' уже существует", Severity.Error);
+                return;
+            }
+            Db.Scripts.Add(new Script
+            {
+                Slug = slug,
+                Name = _name,
+                Description = string.IsNullOrWhiteSpace(_desc) ? null : _desc,
+                Query = query,
+                Transform = string.IsNullOrWhiteSpace(_transform) ? null : _transform,
+                OutputFormat = _format,
+                CacheTtl = int.TryParse(_ttl, out var ttl) ? ttl : 300,
+                CreatedBy = "owner",
+            });
+            await Db.SaveChangesAsync();
+            _createOpen = false;
+            await Reload();
+            Snackbar.Add("Скрипт создан", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void OpenEdit(Script s)
+    {
+        _editId = s.Id;
+        _editName = s.Name; _editSlug = s.Slug; _editDesc = s.Description ?? "";
+        _editQuery = s.Query.GetRawText();
+        _editTransform = s.Transform ?? "";
+        _editFormat = s.OutputFormat;
+        _editTtl = s.CacheTtl.ToString();
+        _editOpen = true;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_editId is not { } id) return;
+        var s = await Db.Scripts.FirstOrDefaultAsync(x => x.Id == id);
+        if (s is null) { Snackbar.Add("Скрипт не найден", Severity.Error); return; }
+        try
+        {
+            var query = JsonDocument.Parse(_editQuery).RootElement.Clone();
+            Engine.ValidateQueryShape(query);
+            var slug = ProposalService.Slugify(_editSlug);
+            if (slug != s.Slug && await Db.Scripts.AnyAsync(x => x.Slug == slug))
+            {
+                Snackbar.Add($"Slug '{slug}' уже существует", Severity.Error);
+                return;
+            }
+            s.Name = _editName; s.Slug = slug;
+            s.Description = string.IsNullOrWhiteSpace(_editDesc) ? null : _editDesc;
+            s.Query = query;
+            s.Transform = string.IsNullOrWhiteSpace(_editTransform) ? null : _editTransform;
+            s.OutputFormat = _editFormat;
+            s.CacheTtl = int.TryParse(_editTtl, out var ttl) ? ttl : 300;
+            s.Version++;
+            s.UpdatedAt = DateTimeOffset.UtcNow;
+            var stale = await Db.ScriptCache.Where(c => c.ScriptId == s.Id).ToListAsync();
+            Db.ScriptCache.RemoveRange(stale);
+            await Db.SaveChangesAsync();
+            _editOpen = false;
+            await Reload();
+            Snackbar.Add("Скрипт сохранён", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task Delete(Script s)
+    {
+        var cache = await Db.ScriptCache.Where(c => c.ScriptId == s.Id).ToListAsync();
+        Db.ScriptCache.RemoveRange(cache);
+        Db.Scripts.Remove(s);
+        await Db.SaveChangesAsync();
+        await Reload();
+        Snackbar.Add("Скрипт удалён", Severity.Info);
+    }
+
+    private static string Pretty(JsonElement el) =>
         el.GetRawText().Length > 20000 ? el.GetRawText()[..20000] + "\n…(truncated)" : el.GetRawText();
 }

@@ -41,6 +41,9 @@ switch (cmd)
     case "agent-key":
         await CreateAgentKeyAsync(args.Skip(1));
         break;
+    case "mcp":
+        await RunMcpStdio();
+        break;
     default:
         PrintHelp();
         break;
@@ -95,6 +98,105 @@ async Task SyncOnceAsync()
 
     var res = await client.SyncAsync(svc);
     Console.WriteLine($"[akasha] sync done: pulled={res.Pulled}, pushed={res.Pushed}, skipped={res.SkippedOlder}, conflicts={res.Conflicts}");
+}
+
+// ═══ mcp — stdio MCP-сервер (JSON-RPC 2.0 поверх stdin/stdout) ═══════════════
+async Task RunMcpStdio()
+{
+    using var scope = BuildProvider().CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AkashaDbContext>();
+    await db.Database.EnsureCreatedAsync();
+    var mcp = scope.ServiceProvider.GetRequiredService<McpService>();
+
+    using var stdout = Console.OpenStandardOutput();
+    while (await Console.In.ReadLineAsync() is { } line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) continue;
+        await HandleMcpLine(mcp, line, stdout);
+    }
+}
+
+static async Task HandleMcpLine(McpService mcp, string line, Stream stdout)
+{
+    JsonDocument req;
+    try { req = JsonDocument.Parse(line); }
+    catch (JsonException) { await WriteRpc(stdout, default, -32700, "parse error", null); return; }
+
+    var root = req.RootElement;
+    var id = root.TryGetProperty("id", out var i) ? i.Clone() : default;
+    var method = root.TryGetProperty("method", out var m) ? m.GetString() ?? "" : "";
+    var ps = root.TryGetProperty("params", out var p) ? p : JsonDocument.Parse("{}").RootElement;
+
+    try
+    {
+        switch (method)
+        {
+            case "initialize":
+                await WriteRpc(stdout, id, 0, null, new
+                {
+                    protocolVersion = "2024-11-05",
+                    capabilities = new { tools = new { listChanged = false } },
+                    serverInfo = new { name = "akasha", version = "0.3.0" },
+                    instructions = "Akasha personal context vault. Use akasha_query_schema first if unsure about syntax.",
+                });
+                break;
+            case "notifications/initialized":
+            case "initialized":
+                break; // ответ не требуется
+            case "ping":
+                await WriteRpc(stdout, id, 0, null, new { });
+                break;
+            case "tools/list":
+                await WriteRpc(stdout, id, 0, null, new
+                {
+                    tools = McpService.GetToolDefinitions()
+                        .Select(t => new { name = t.Name, description = t.Description, inputSchema = t.InputSchema }),
+                });
+                break;
+            case "tools/call":
+            {
+                var name = ps.TryGetProperty("name", out var tn) ? tn.GetString() ?? "" : "";
+                var args = ps.TryGetProperty("arguments", out var a) && a.ValueKind == JsonValueKind.Object
+                    ? a.Clone()
+                    : JsonDocument.Parse("{}").RootElement;
+                var text = await mcp.CallAsync(name, args);
+                await WriteRpc(stdout, id, 0, null, new
+                {
+                    content = new[] { new { type = "text", text } },
+                    isError = false,
+                });
+                break;
+            }
+            default:
+                await WriteRpc(stdout, id, -32601, $"method not found: {method}", null);
+                break;
+        }
+    }
+    catch (Exception ex)
+    {
+        await WriteRpc(stdout, id, -32603, ex.Message, null);
+    }
+}
+
+static async Task WriteRpc(Stream stdout, JsonElement id, int errCode, string? errMsg, object? result)
+{
+    var envelope = new Dictionary<string, object?>
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = id.ValueKind switch
+        {
+            JsonValueKind.Undefined => null,
+            JsonValueKind.Number => id.GetInt64(),
+            _ => id.GetString(),
+        },
+    };
+    if (errCode != 0) envelope["error"] = new { code = errCode, message = errMsg ?? "" };
+    else envelope["result"] = result!;
+
+    var json = JsonSerializer.Serialize(envelope, ApiEndpoints.JsonOpts);
+    var bytes = System.Text.Encoding.UTF8.GetBytes(json + "\n");
+    await stdout.WriteAsync(bytes);
+    await stdout.FlushAsync();
 }
 
 // ═══ export / import ════════════════════════════════════════════════════════
@@ -188,7 +290,7 @@ void PrintHelp()
           akasha serve [--urls ...]      start full server (UI + API + MCP), portable SQLite storage
           akasha portable                start local-only server on http://127.0.0.1:$AKASHA_PORT (default 5173)
           akasha sync                    one-shot pull+push against AKASHA_SERVER_URL using AKASHA_DEVICE_KEY
-          akasha mcp                     (alias) start server exposing only /mcp endpoint usage — see docs/mcp-tools.md
+          akasha mcp                     start stdio MCP server (JSON-RPC over stdin/stdout)
           akasha export [out.zip] [--secrets]   export store to open-format archive
           akasha import <archive.zip>           idempotent import
           akasha agent-key <name> [read propose scripts...]   create an agent API key locally
