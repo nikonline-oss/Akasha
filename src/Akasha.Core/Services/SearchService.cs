@@ -127,7 +127,7 @@ public class SearchService
     }
 
     /// <summary>Слишком короткие тексты дают «hub» (близки ко всему) — их находит FTS.</summary>
-    private const int MinVectorWords = 4;
+    private const int MinVectorWords = 5;
 
     /// <summary>
     /// Ранжирование cosine с центрированием по среднему вектору корпуса
@@ -136,7 +136,7 @@ public class SearchService
     private static List<(Entry e, double score)> RankVectors(List<Entry> candidates, float[] qv)
     {
         var docs = candidates
-            .Where(e => e.Embedding is not null && DistinctWords(e.Title + " " + e.Body) >= MinVectorWords)
+            .Where(e => e.Embedding is not null && DistinctWords(e.Body) >= MinVectorWords)
             .ToList();
         if (docs.Count == 0) return new();
 
