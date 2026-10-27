@@ -5,9 +5,12 @@ using Microsoft.ML.Tokenizers;
 namespace Akasha.Core.Services;
 
 /// <summary>
-/// Эмбеддинги через ONNX Runtime (BGE-Micro-V2, 384 dim). Опционально: включается при наличии
-/// AKASHA_ONNX_MODEL. Не бросает исключения в горячем пути — при ошибке регистрации
-/// (нет файла/не тот формат) используется <see cref="HashedNgramEmbeddings"/> как fallback.
+/// Эмбеддинги через ONNX Runtime (384 dim). Опционально: включается при наличии AKASHA_ONNX_MODEL.
+/// Поддерживает два токенизатора:
+/// — WordPiece (<c>vocab.txt</c>) — BGE/bert-модели (например bge-small-en-v1.5);
+/// — SentencePiece (<c>sentencepiece.bpe.model</c>) — мультиязычные XLM-R модели
+///   (например paraphrase-multilingual-MiniLM-L12-v2), нужные для русского текста.
+/// При ошибке регистрации используется <see cref="HashedNgramEmbeddings"/> как fallback.
 /// </summary>
 public sealed class OnnxEmbeddingService : IEmbeddingService, IDisposable
 {
@@ -15,7 +18,8 @@ public sealed class OnnxEmbeddingService : IEmbeddingService, IDisposable
     public int Dimension => Dim;
 
     private readonly InferenceSession _session;
-    private readonly BertTokenizer _tokenizer;
+    private readonly BertTokenizer? _wordPiece;
+    private readonly SentencePieceTokenizer? _sentencePiece;
     private readonly int _maxLength;
     private readonly string[] _inputNames;
 
@@ -27,21 +31,33 @@ public sealed class OnnxEmbeddingService : IEmbeddingService, IDisposable
         if (!_inputNames.Contains("input_ids", StringComparer.OrdinalIgnoreCase))
             throw new InvalidOperationException("ONNX-модель не содержит вход 'input_ids'.");
 
-        var opts = new BertOptions
+        // SentencePiece (*.model/*.spm) — XLM-R/мультиязычные модели; иначе WordPiece vocab.txt.
+        if (vocabPath.EndsWith(".model", StringComparison.OrdinalIgnoreCase) ||
+            vocabPath.EndsWith(".spm", StringComparison.OrdinalIgnoreCase))
         {
-            LowerCaseBeforeTokenization = true,
-            ApplyBasicTokenization = true,
-            ClassificationToken = "[CLS]",
-            SeparatorToken = "[SEP]",
-            PaddingToken = "[PAD]",
-            MaskingToken = "[MASK]",
-        };
-        _tokenizer = BertTokenizer.Create(vocabPath, opts);
+            using var stream = File.OpenRead(vocabPath);
+            _sentencePiece = SentencePieceTokenizer.Create(stream,
+                addBeginningOfSentence: true, addEndOfSentence: true);
+        }
+        else
+        {
+            _wordPiece = BertTokenizer.Create(vocabPath, new BertOptions
+            {
+                LowerCaseBeforeTokenization = true,
+                ApplyBasicTokenization = true,
+                ClassificationToken = "[CLS]",
+                SeparatorToken = "[SEP]",
+                PaddingToken = "[PAD]",
+                MaskingToken = "[MASK]",
+            });
+        }
     }
 
     public float[] Embed(string text)
     {
-        var ids = _tokenizer.EncodeToIds(text, true, true);
+        var ids = _sentencePiece is not null
+            ? _sentencePiece.EncodeToIds(text, addBeginningOfSentence: true, addEndOfSentence: true).ToList()
+            : _wordPiece!.EncodeToIds(text, true, true).ToList();
         var len = Math.Min(ids.Count, _maxLength);
         var inputIds = new long[_maxLength];
         var attentionMask = new long[_maxLength];
