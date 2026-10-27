@@ -6,7 +6,7 @@
 <MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.agents")</MudText>
 <MudText Typo="Typo.body2" Class="mb-4">
     Каждый агент (Claude Desktop, Cursor и т.п.) получает Bearer-ключ <code>ak_…</code>, который показывается
-    только один раз при создании. Скоупы: read / propose / scripts.
+    только один раз при создании. Скоупы: read / propose / scripts / context (прямая запись в «Контекст агента»).
 </MudText>
 
 @if (_newKey is not null)
@@ -24,9 +24,12 @@
             <MudTextField @bind-Value="_name" Label="Имя агента" Placeholder="claude-desktop" />
         </MudItem>
         <MudItem xs="12" sm="5">
-            <MudCheckBox T="bool" @bind-Value="_scopeRead" Label="read" Dense="true" Style="display:inline-block" />
-            <MudCheckBox T="bool" @bind-Value="_scopePropose" Label="propose" Dense="true" Style="display:inline-block" />
-            <MudCheckBox T="bool" @bind-Value="_scopeScripts" Label="scripts" Dense="true" Style="display:inline-block" />
+            @foreach (var sc in Scopes.All)
+            {
+                <MudCheckBox T="bool" Value="@_scopeFlags[sc]"
+                             ValueChanged="@(v => _scopeFlags[sc] = v)"
+                             Label="@sc" Dense="true" Style="display:inline-block" />
+            }
         </MudItem>
         <MudItem xs="12" sm="3" Class="d-flex align-end">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="CreateAgent">
@@ -65,6 +68,11 @@
         <MudTd>
             @if (context.IsActive)
             {
+                @if (!context.Scopes.Contains(Scopes.Context))
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               OnClick="@(() => AddContextScope(context))">+context</MudButton>
+                }
                 <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
                            OnClick="@(() => Revoke(context.Id))">Revoke</MudButton>
             }
@@ -75,7 +83,8 @@
 @code {
     private List<Agent> _agents = new();
     private string _name = "";
-    private bool _scopeRead = true, _scopePropose = true, _scopeScripts = false;
+    private readonly Dictionary<string, bool> _scopeFlags =
+        Scopes.All.ToDictionary(s => s, s => s == Scopes.Read || s == Scopes.Propose);
     private string? _newKey;
 
     protected override async Task OnInitializedAsync() => await Reload();
@@ -88,10 +97,7 @@
     private async Task CreateAgent()
     {
         if (string.IsNullOrWhiteSpace(_name)) return;
-        var scopes = new List<string>();
-        if (_scopeRead) scopes.Add(Scopes.Read);
-        if (_scopePropose) scopes.Add(Scopes.Propose);
-        if (_scopeScripts) scopes.Add(Scopes.Scripts);
+        var scopes = Scopes.All.Where(s => _scopeFlags.TryGetValue(s, out var on) && on).ToList();
         if (scopes.Count == 0) { Snackbar.Add("Выберите хотя бы один скоуп", Severity.Warning); return; }
 
         var (plaintext, agent) = await Auth.CreateAgentAsync(_name, null, scopes);
@@ -99,6 +105,16 @@
         _name = "";
         await Reload();
         Snackbar.Add($"Агент «{agent.Name}» создан", Severity.Success);
+    }
+
+    private async Task AddContextScope(Agent a)
+    {
+        if (a.Scopes.Contains(Scopes.Context)) return;
+        a.Scopes = a.Scopes.Append(Scopes.Context).ToList();
+        Db.Agents.Update(a);
+        await Db.SaveChangesAsync();
+        await Reload();
+        Snackbar.Add($"scope «context» добавлен агенту «{a.Name}»", Severity.Success);
     }
 
     private async Task Revoke(Guid id)
