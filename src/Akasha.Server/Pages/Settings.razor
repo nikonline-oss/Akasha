@@ -1,6 +1,9 @@
 @page "/settings"
 @inject AppState AppState
 @inject IJSRuntime Js
+@inject AkashaDbContext Db
+@inject EmbeddingQueue Queue
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <PageTitle>Akasha — @Loc.T("settings.title")</PageTitle>
@@ -43,6 +46,14 @@
     </MudStack>
 </MudPaper>
 
+<MudPaper Class="pa-4 mt-4">
+    <MudText Typo="Typo.h6" GutterBottom="true">@Loc.T("settings.maintenance")</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@Loc.T("settings.embeddingsHint")</MudText>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RecomputeEmbeddings" Disabled="@_recomputing">
+        @(_recomputing ? Loc.T("settings.recomputing") : Loc.T("settings.recompute"))
+    </MudButton>
+</MudPaper>
+
 @code {
     private static readonly (string Key, string LabelKey)[] Themes =
     {
@@ -52,6 +63,29 @@
     };
 
     protected override void OnInitialized() => AppState.Changed += OnChanged;
+
+    private bool _recomputing;
+
+    private async Task RecomputeEmbeddings()
+    {
+        _recomputing = true;
+        try
+        {
+            var ids = await Db.Entries
+                .Where(e => e.Embedding == null && e.DeletedAt == null)
+                .Select(e => e.Id).ToListAsync();
+            foreach (var id in ids) Queue.Enqueue(id);
+            Snackbar.Add(Loc.T("settings.recomputeQueued", ids.Count), Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _recomputing = false;
+        }
+    }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
 
