@@ -1,9 +1,11 @@
 @page "/scripts"
 @using System.Text.Json
 @using Akasha.Core.Query
+@using Akasha.Server.Ai
 @inject AkashaDbContext Db
 @inject ScriptService ScriptSvc
 @inject QueryEngine Engine
+@inject QueryAssistService Ai
 @inject ISnackbar Snackbar
 
 <MudText Typo="Typo.h5" GutterBottom="true">Скрипты (Structured JSON Queries)</MudText>
@@ -128,6 +130,17 @@
             <MudItem xs="12">
                 <MudTextField @bind-Value="_transform" Label="JMESPath transform (необяз.)" Variant="Variant.Outlined" />
             </MudItem>
+            @if (Ai.IsConfigured)
+            {
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_assistDesc" Label="✨ Опиши, что хочешь найти" Lines="2" Variant="Variant.Outlined"
+                                  Placeholder="последние 5 решений по проекту за неделю" />
+                    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.AutoAwesome"
+                               OnClick="Assist" Disabled="@_assisting">
+                        @(_assisting ? "Генерация…" : "Помочь с запросом")
+                    </MudButton>
+                </MudItem>
+            }
             <MudItem xs="12">
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Предпросмотр запроса (JSON):</MudText>
                 <pre class="pa-2 rounded" style="background:#F4F1FA; overflow:auto; max-height:220px; font-size:0.8rem;">@PreviewJson()</pre>
@@ -198,6 +211,8 @@
     private string _name = "", _slug = "", _desc = "", _from = "entries", _kind = "", _project = "", _tags = "";
     private string _limit = "50", _orderField = "updated_at", _orderDir = "desc";
     private string _format = "table", _ttl = "300", _transform = "";
+    private string _assistDesc = "";
+    private bool _assisting;
 
     // edit (json editor)
     private bool _editOpen;
@@ -255,6 +270,45 @@
     }
 
     private string PreviewJson() => JsonSerializer.Serialize(BuildQuery(), new JsonSerializerOptions { WriteIndented = true });
+
+    private async Task Assist()
+    {
+        if (string.IsNullOrWhiteSpace(_assistDesc)) { Snackbar.Add("Опиши, что найти", Severity.Warning); return; }
+        _assisting = true;
+        try
+        {
+            var q = await Ai.GenerateQueryAsync(_assistDesc);
+            ApplyQueryToForm(q);
+            Snackbar.Add("Запрос сгенерирован — проверь предпросмотр", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _assisting = false; }
+    }
+
+    private void ApplyQueryToForm(JsonElement q)
+    {
+        if (q.TryGetProperty("from", out var f) && f.ValueKind == JsonValueKind.String) _from = f.GetString()!;
+        if (q.TryGetProperty("limit", out var l) && l.ValueKind == JsonValueKind.Number && l.TryGetInt32(out var ln))
+            _limit = ln.ToString();
+        if (q.TryGetProperty("order_by", out var ob) && ob.ValueKind == JsonValueKind.Array && ob.GetArrayLength() > 0)
+        {
+            var o = ob[0];
+            if (o.TryGetProperty("field", out var of) && of.ValueKind == JsonValueKind.String) _orderField = of.GetString()!;
+            if (o.TryGetProperty("dir", out var od) && od.ValueKind == JsonValueKind.String) _orderDir = od.GetString()!;
+        }
+        if (q.TryGetProperty("where", out var w) && w.ValueKind == JsonValueKind.Object)
+        {
+            if (w.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String) _kind = k.GetString()!;
+            if (w.TryGetProperty("project", out var p) && p.ValueKind == JsonValueKind.String) _project = p.GetString()!;
+            if (w.TryGetProperty("tags", out var tg))
+            {
+                if (tg.ValueKind == JsonValueKind.Array)
+                    _tags = string.Join(", ", tg.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0));
+                else if (tg.ValueKind == JsonValueKind.Object && tg.TryGetProperty("$contains_any", out var any) && any.ValueKind == JsonValueKind.Array)
+                    _tags = string.Join(", ", any.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0));
+            }
+        }
+    }
 
     private void OpenCreate()
     {
