@@ -9,7 +9,8 @@
 /workspace
 ├── src/
 │   ├── Akasha.Core/        # общая доменная библиотека (без зависимостей от ASP.NET)
-│   └── Akasha.Server/      # ASP.NET Core: REST API, MCP, Blazor UI, Telegram-бот, sync
+│   ├── Akasha.Server/      # ASP.NET Core: REST API, MCP, Blazor UI, Telegram-бот, sync
+│   └── Akasha.Portable/    # portable CLI-хост: serve/portable/sync/export/import/agent-key
 ├── tests/
 │   └── Akasha.Tests/       # xUnit: unit + интеграционные тесты (SQLite temp-БД)
 ├── doc/                    # эта документация
@@ -84,7 +85,7 @@ Conflict (both sides changed) ──► автоматический conflict-pr
 
 ## 6. Тесты
 
-`tests/Akasha.Tests` — 51 тест (xUnit, SQLite temp-файл на тест-класс):
+`tests/Akasha.Tests` — 71 тест (xUnit, SQLite temp-файл на тест-класс):
 QueryEngine (whitelist, фильтры, сортировка, лимиты, теги), ProposalService (lifecycle, конфликты версий),
 ScriptService (валидация параметров, кэш, canonical JSON), Hashing/SecretCrypto (roundtrip),
 DiffService, SearchService, SyncService (pull buffer, push last-write-wins, forbidden entities),
