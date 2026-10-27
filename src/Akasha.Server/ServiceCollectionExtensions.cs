@@ -6,6 +6,7 @@ using Akasha.Server.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pgvector;
+using Pgvector.EntityFrameworkCore;
 
 namespace Akasha.Server;
 
@@ -70,7 +71,7 @@ public static class ServiceCollectionExtensions
         {
             var opts = new DbContextOptionsBuilder<AkashaDbContext>();
             if (useSqlite) opts.UseSqlite(cs);
-            else opts.UseNpgsql(cs);
+            else opts.UseNpgsql(cs, o => o.UseVector());
             return new AkashaDbContext(opts.Options);
         });
 
