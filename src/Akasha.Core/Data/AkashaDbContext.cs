@@ -51,6 +51,10 @@ public class AkashaDbContext : DbContext
                 }
         }
 
+        // pgvector: сообщаем Postgres о расширении vector (тип-маппинг включается UseVector в Npgsql-опциях).
+        if (!IsSqlite)
+            b.HasPostgresExtension("vector");
+
         // ─── Общие конвертеры для JSON/массивов на SQLite ─────────────────────
         var jsonConv = new ValueConverter<JsonElement, string>(
             j => j.ValueKind == JsonValueKind.Undefined ? null! : j.GetRawText(),
