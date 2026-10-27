@@ -45,6 +45,11 @@ public static class Loc
         ["settings.forest"] = "Лес",
         ["settings.preview"] = "Предпросмотр",
         ["settings.saved"] = "Сохранено",
+        ["settings.maintenance"] = "Обслуживание",
+        ["settings.embeddingsHint"] = "Пересчитать эмбеддинги для записей без них (после обновления или смены модели).",
+        ["settings.recompute"] = "Пересчитать эмбеддинги",
+        ["settings.recomputing"] = "Пересчёт…",
+        ["settings.recomputeQueued"] = "В очередь добавлено записей: {0}",
         // общее
         ["common.save"] = "Сохранить",
         ["common.cancel"] = "Отмена",
@@ -244,6 +249,11 @@ public static class Loc
         ["settings.forest"] = "Forest",
         ["settings.preview"] = "Preview",
         ["settings.saved"] = "Saved",
+        ["settings.maintenance"] = "Maintenance",
+        ["settings.embeddingsHint"] = "Recompute embeddings for entries that lack them (after an upgrade or a model change).",
+        ["settings.recompute"] = "Recompute embeddings",
+        ["settings.recomputing"] = "Recomputing…",
+        ["settings.recomputeQueued"] = "Queued {0} entries",
         // common
         ["common.save"] = "Save",
         ["common.cancel"] = "Cancel",

@@ -156,6 +156,7 @@ public static class ServiceCollectionExtensions
             await db.Database.EnsureCreatedAsync(ct);
             await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
             await ApplySchemaMigrationsAsync(db, ct);
+            await ReenqueueMissingEmbeddingsAsync(sp, ct);
         }
         else
         {
@@ -166,13 +167,14 @@ public static class ServiceCollectionExtensions
                 await db.Database.EnsureCreatedAsync(ct);
 
                 // EnsureCreated не мигрирует существующую схему — версионные патчи догоняют её.
-                var migrated = await ApplySchemaMigrationsAsync(db, ct);
+                await ApplySchemaMigrationsAsync(db, ct);
 
                 // ivfflat-индекс для векторного поиска (best-effort).
                 await db.Database.ExecuteSqlRawAsync(
                     "CREATE INDEX IF NOT EXISTS ix_entries_embedding ON entries USING ivfflat (\"Embedding\" vector_cosine_ops) WITH (lists = 100);", ct);
 
-                if (migrated) await ReenqueueMissingEmbeddingsAsync(sp, ct);
+                // догоняем записи без эмбеддингов (старые БД / прошлые сбои) — при старте.
+                await ReenqueueMissingEmbeddingsAsync(sp, ct);
             }
             catch (Exception ex)
             {

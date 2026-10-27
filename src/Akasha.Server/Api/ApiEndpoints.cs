@@ -60,6 +60,7 @@ public static class ApiEndpoints
         admin.MapPost("/agents", AdminCreateAgentAsync);
         admin.MapDelete("/agents/{id:guid}", AdminRevokeAgentAsync);
         admin.MapGet("/audit", AdminAuditAsync);
+        admin.MapPost("/embeddings/recompute", RecomputeEmbeddingsAsync);
         admin.MapGet("/secrets", AdminListSecretsAsync);
         admin.MapPost("/secrets", AdminCreateSecretAsync);
         admin.MapGet("/secrets/{id:guid}/reveal", AdminRevealSecretAsync);
@@ -454,6 +455,15 @@ public static class ApiEndpoints
         {
             a.Id, a.Actor, a.Action, a.Target, a.TargetId, a.Diff, a.At, a.Ip,
         }), JsonOpts);
+    }
+
+    /// <summary>Пересчитать эмбеддинги у записей, где их нет (после обновления/смены модели).</summary>
+    private static async Task<IResult> RecomputeEmbeddingsAsync(AkashaDbContext db, EmbeddingQueue queue, CancellationToken ct)
+    {
+        var ids = await db.Entries.Where(e => e.Embedding == null && e.DeletedAt == null)
+            .Select(e => e.Id).ToListAsync(ct);
+        foreach (var id in ids) queue.Enqueue(id);
+        return Results.Json(new { enqueued = ids.Count }, JsonOpts);
     }
 
     private static readonly object MasterKeyLock = new();
