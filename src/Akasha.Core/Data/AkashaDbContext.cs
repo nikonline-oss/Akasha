@@ -17,6 +17,12 @@ public class AkashaDbContext : DbContext
 {
     public AkashaDbContext(DbContextOptions<AkashaDbContext> options) : base(options) { }
 
+    /// <summary>
+    /// Размерность вектора эмбеддингов (задаётся моделью на старте).
+    /// Используется в типе колонки Postgres: <c>vector(N)</c>.
+    /// </summary>
+    public static int EmbeddingDim { get; set; } = 384;
+
     public DbSet<Owner> Owners => Set<Owner>();
     public DbSet<Agent> Agents => Set<Agent>();
     public DbSet<Project> Projects => Set<Project>();
@@ -113,7 +119,7 @@ public class AkashaDbContext : DbContext
             if (IsSqlite)
                 e.Property(x => x.Embedding).HasConversion(embConv);
             else
-                e.Property(x => x.Embedding).HasColumnType("vector(384)");
+                e.Property(x => x.Embedding).HasColumnType($"vector({EmbeddingDim})");
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId);
         });
 

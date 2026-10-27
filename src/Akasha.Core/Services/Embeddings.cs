@@ -1,9 +1,9 @@
 namespace Akasha.Core.Services;
 
 /// <summary>
-/// Абстракция эмбеддингов (BGE-Micro-V2, 384 dim). В MVP/portable офлайн-модель ONNX подключается
-/// отдельно; здесь — детерминированный fallback-генератор (hash-based bag-of-character-ngrams),
-/// который даёт осмысленный косинус для похожих текстов и позволяет системе работать без модели.
+/// Абстракция эмбеддингов (BGE/rubert/distiluse и т.п.). Размерность задаётся моделью.
+/// Офлайн-модель ONNX подключается отдельно; здесь — детерминированный fallback-генератор
+/// (hash-based bag-of-character-ngrams), который даёт осмысленный косинус для похожих текстов.
 /// </summary>
 public interface IEmbeddingService
 {
@@ -13,15 +13,20 @@ public interface IEmbeddingService
 
 public class HashedNgramEmbeddings : IEmbeddingService
 {
-    public const int Dim = 384;
-    public int Dimension => Dim;
+    public const int DefaultDim = 384;
+    private readonly int _dim;
+
+    public HashedNgramEmbeddings(int dimension = DefaultDim)
+        => _dim = dimension > 0 ? dimension : DefaultDim;
+
+    public int Dimension => _dim;
 
     private static readonly System.Text.RegularExpressions.Regex WordSplit =
         new(@"[\p{L}\p{Nd}]+", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     public float[] Embed(string text)
     {
-        var vec = new float[Dim];
+        var vec = new float[_dim];
         if (string.IsNullOrWhiteSpace(text)) return Normalize(vec);
         text = text.ToLowerInvariant();
         foreach (System.Text.RegularExpressions.Match m in WordSplit.Matches(text))
@@ -39,8 +44,8 @@ public class HashedNgramEmbeddings : IEmbeddingService
     {
         var h = (uint)StableHash(token);
         // 2 позиции на токен (double hashing)
-        var idx1 = (int)(h % Dim);
-        var idx2 = (int)((h >> 8 ^ 0x9E3779B9u) % Dim);
+        var idx1 = (int)(h % (uint)vec.Length);
+        var idx2 = (int)((h >> 8 ^ 0x9E3779B9u) % (uint)vec.Length);
         vec[idx1] += Sign(h);
         vec[idx2] += Sign(~h);
     }
