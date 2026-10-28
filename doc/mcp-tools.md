@@ -23,7 +23,7 @@ curl -X POST http://127.0.0.1:5173/mcp \
 
 Поддерживаются методы: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`.
 
-## Список инструментов (14)
+## Список инструментов (15)
 
 ### akasha_query_schema
 Вернуть JSON Schema данных и синтаксиса Structured Query + примеры. **Вызывать первым**, чтобы строить корректные запросы. Вход: `{}`.
@@ -82,6 +82,10 @@ curl -X POST http://127.0.0.1:5173/mcp \
 Создать заметку контекста. Вход: `{"title":"...", "body":"...", "project_id":"<uuid>"?, "tags":["a"]?}`
 → `{id,title,project_id,created_at}`.
 
+### akasha_context_update
+Обновить свою заметку контекста (частично: меняются только переданные поля). Вход:
+`{"id":"<uuid>", "title"?, "body"?, "tags"?}` → `{id,title,tags,updated_at}`.
+
 ### akasha_context_list
 Список заметок контекста. Вход: `{"project_id"?, "agent_id"?, "q"?, "limit"?}` → `{notes:[...]}`.
 Агент видит только свои заметки; владелец — все.
@@ -99,7 +103,7 @@ curl -X POST http://127.0.0.1:5173/mcp \
 | `akasha_query_schema`, `akasha_list_projects`, `akasha_get_project`, `akasha_get_entry`, `akasha_search`, `akasha_run_query` | `read` |
 | `akasha_propose`, `akasha_propose_script`, `akasha_get_proposal_status` | `propose` |
 | `akasha_run_script` | `scripts` |
-| `akasha_context_write`, `akasha_context_delete` | `context` |
+| `akasha_context_write`, `akasha_context_update`, `akasha_context_delete` | `context` |
 | `akasha_context_list`, `akasha_context_get` | `read` |
 
 Недостаточный scope → ошибка (`-32001` в JSON-RPC).
