@@ -48,6 +48,7 @@ public static class ApiEndpoints
         api.MapGet("/context", ListContextAsync).RequireScope(Scopes.Read);
         api.MapGet("/context/{id:guid}", GetContextAsync).RequireScope(Scopes.Read);
         api.MapPost("/context", CreateContextAsync).RequireScope(Scopes.Context);
+        api.MapPut("/context/{id:guid}", UpdateContextAsync).RequireScope(Scopes.Context);
         api.MapDelete("/context/{id:guid}", DeleteContextAsync).RequireScope(Scopes.Context);
 
         // ─── Admin (owner only) ───────────────────────────────────────────────
@@ -337,6 +338,20 @@ public static class ApiEndpoints
             var agentId = pr.IsOwner ? (Guid?)null : pr.Agent!.Id;
             var n = await svc.CreateAsync(Actor(ctx), agentId, req.ProjectId, req.Title, req.Body ?? "", req.Tags, ct);
             return Results.Json(n.ToDto(), JsonOpts);
+        }
+        catch (Exception ex) { return FromException(ex); }
+    }
+
+    private static async Task<IResult> UpdateContextAsync(Guid id, HttpContext ctx, ContextStoreService svc, CancellationToken ct)
+    {
+        var req = await Body<ApiTypes.ContextUpdateRequest>(ctx);
+        if (req is null) return Err(422, "validation", "empty body");
+        try
+        {
+            var pr = P(ctx);
+            var agentId = pr.IsOwner ? (Guid?)null : pr.Agent!.Id;
+            var n = await svc.UpdateAsync(Actor(ctx), id, agentId, req.Title, req.Body, req.Tags, ct);
+            return n is null ? Err(404, "not_found") : Results.Json(n.ToDto(), JsonOpts);
         }
         catch (Exception ex) { return FromException(ex); }
     }

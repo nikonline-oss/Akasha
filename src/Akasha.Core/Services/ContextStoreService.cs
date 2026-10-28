@@ -43,6 +43,27 @@ public class ContextStoreService
     public Task<ContextNote?> GetAsync(Guid id, CancellationToken ct = default) =>
         _db.ContextNotes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
 
+    /// <summary>Частичное обновление: null-поля не меняются. Агент правит только свои записи.</summary>
+    public async Task<ContextNote?> UpdateAsync(string actor, Guid id, Guid? agentId,
+        string? title, string? body, IEnumerable<string>? tags, CancellationToken ct = default)
+    {
+        var note = await _db.ContextNotes.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (note is null) return null;
+        if (agentId is Guid a && note.AgentId != a)
+            throw new UnauthorizedAccessException("agents can update only their own context notes");
+        if (title is not null) note.Title = title.Trim();
+        if (body is not null) note.Body = body;
+        if (tags is not null)
+            note.Tags = tags.Select(t => (t ?? "").Trim())
+                .Where(t => t.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        note.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        await _audit.LogAsync(actor, "context.update", "context_notes", note.Id, null, ct);
+        return note;
+    }
+
     public async Task<List<ContextNote>> ListAsync(Guid? projectId, Guid? agentId, string? query,
         int limit = 100, CancellationToken ct = default)
     {
