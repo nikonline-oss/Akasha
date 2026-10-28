@@ -42,9 +42,11 @@ public class SearchService
         bool TagMatch(Entry e) => activeTags.Count == 0 || activeTags.Any(t => (e.Tags ?? new()).Contains(t));
 
         // ── FTS-ранк: пословное вхождение в title/body (simple tokenizer, EN/RU) ──
+        // Короткие слова («и», «на», «как») отбрасываем: они матчатся почти во всём и шумят.
         var terms = query.ToLowerInvariant()
             .Split(new[] { ' ', '\t', '\n', '\r', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '"', '\'' },
                 StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 3)
             .Distinct().Take(12).ToArray();
 
         var ftsRanked = new List<(Entry e, double score)>();
@@ -67,8 +69,11 @@ public class SearchService
         }
 
         // ── Vector-ранк: cosine по embedding ──
+        // hybrid: FTS — основной сигнал; вектор добирает ТОЛЬКО когда FTS не нашёл ничего.
+        // Иначе нейросетевой ранг перебивает точные совпадения (напр. «грабли и фиксы»).
         var vecRanked = new List<(Entry e, double score)>();
-        if (mode is "vector" or "hybrid")
+        var useVector = mode == "vector" || (mode == "hybrid" && ftsRanked.Count == 0);
+        if (useVector)
         {
             var qv = _embeddings.Embed(query);
             var candidates = await LoadVectorCandidatesAsync(Base(), qv, ct);
