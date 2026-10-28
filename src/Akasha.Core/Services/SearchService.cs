@@ -76,20 +76,24 @@ public class SearchService
             vecRanked = RankVectors(candidates, qv);
         }
 
-        // ── RRF fusion: score(d) = Σ 1/(60 + rank_i(d)) ──
+        // ── RRF fusion: score(d) = Σ w_i/(60 + rank_i(d)) ──
+        // FTS точнее на реальных запросах, вектор — только семантический добор,
+        // поэтому вес FTS выше (эмпирически: 2:1 стабильнее на русских текстах).
         const int k = 60;
+        const double FtsWeight = 2.0;
+        const double VectorWeight = 1.0;
         var fused = new Dictionary<Guid, (Entry e, double score)>();
         for (int i = 0; i < ftsRanked.Count; i++)
         {
             var (e, _) = ftsRanked[i];
             var cur = fused.TryGetValue(e.Id, out var c) ? c.score : 0.0;
-            fused[e.Id] = (e, cur + 1.0 / (k + i + 1));
+            fused[e.Id] = (e, cur + FtsWeight / (k + i + 1));
         }
         for (int i = 0; i < vecRanked.Count; i++)
         {
             var (e, _) = vecRanked[i];
             var cur = fused.TryGetValue(e.Id, out var c) ? c.score : 0.0;
-            fused[e.Id] = (e, cur + 1.0 / (k + i + 1));
+            fused[e.Id] = (e, cur + VectorWeight / (k + i + 1));
         }
 
         var slugs = await _db.Projects.AsNoTracking()
