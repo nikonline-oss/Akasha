@@ -100,6 +100,9 @@ public static class ApiTypes
     // ─── Context store (агенты пишут без апрувов) ─────────────────────────────
     public sealed record ContextCreateRequest(Guid? ProjectId, string Title, string? Body, List<string>? Tags);
 
+    /// <summary>Частичное обновление записи контекста: null-поля остаются как были.</summary>
+    public sealed record ContextUpdateRequest(string? Title, string? Body, List<string>? Tags);
+
     public sealed record ContextDto(
         Guid Id, Guid? AgentId, Guid? ProjectId, string Title, string Body,
         List<string> Tags, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);

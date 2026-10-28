@@ -5,8 +5,14 @@
 
 <PageTitle>Akasha — @Loc.T("page.context")</PageTitle>
 
-<MudText Typo="Typo.h5" GutterBottom="true">@Loc.T("page.context")</MudText>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@Loc.T("context.hint")</MudText>
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5">@Loc.T("page.context")</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("context.hint")</MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="@(() => OpenEditor(null))">@Loc.T("context.add")</MudButton>
+</div>
 
 @if (_notes.Count == 0)
 {
@@ -25,8 +31,12 @@ else
                             @AgentName(n.AgentId) · @n.UpdatedAt.ToString("yyyy-MM-dd HH:mm")
                         </MudText>
                     </div>
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                                   OnClick="@(() => Delete(n.Id))" />
+                    <div>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                                       OnClick="@(() => OpenEditor(n))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                       OnClick="@(() => Delete(n.Id))" />
+                    </div>
                 </div>
                 <MudText Typo="Typo.body2" Class="mt-2" Style="white-space:pre-wrap">@n.Body</MudText>
                 @if (n.Tags.Count > 0)
@@ -43,11 +53,37 @@ else
     </MudList>
 }
 
+<MudDialog @bind-Visible="_editorOpen">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingId is null ? Loc.T("context.add") : Loc.T("context.edit"))</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_title" Label="@Loc.T("context.fieldTitle")" Variant="Variant.Outlined"
+                      Class="mb-3" Immediate="true" />
+        <MudTextField @bind-Value="_body" Label="@Loc.T("context.fieldBody")" Variant="Variant.Outlined"
+                      Lines="8" Class="mb-3" Immediate="true" />
+        <MudTextField @bind-Value="_tags" Label="@Loc.T("context.fieldTags")" Variant="Variant.Outlined"
+                      HelperText="@Loc.T("context.tagsHint")" Immediate="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _editorOpen = false)">@Loc.T("common.cancel")</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@Loc.T("common.save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     private List<ContextNote> _notes = new();
     private Dictionary<Guid, string> _agents = new();
 
-    protected override async Task OnInitializedAsync()
+    private bool _editorOpen;
+    private Guid? _editingId;
+    private string _title = "";
+    private string _body = "";
+    private string _tags = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
     {
         _notes = await Contexts.ListAsync(null, null, null, 200);
         var ids = _notes.Where(n => n.AgentId is not null).Select(n => n.AgentId!.Value).Distinct().ToList();
@@ -57,12 +93,45 @@ else
     private string AgentName(Guid? id) =>
         id is Guid g && _agents.TryGetValue(g, out var name) ? name : "owner";
 
+    private void OpenEditor(ContextNote? n)
+    {
+        _editingId = n?.Id;
+        _title = n?.Title ?? "";
+        _body = n?.Body ?? "";
+        _tags = n is null ? "" : string.Join(", ", n.Tags);
+        _editorOpen = true;
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            Snackbar.Add(Loc.T("context.titleRequired"), Severity.Warning);
+            return;
+        }
+        var tags = _tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        try
+        {
+            if (_editingId is Guid id)
+                await Contexts.UpdateAsync("owner", id, null, _title, _body, tags);
+            else
+                await Contexts.CreateAsync("owner", null, null, _title, _body, tags);
+            _editorOpen = false;
+            await ReloadAsync();
+            Snackbar.Add(Loc.T("context.saved"), Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
     private async Task Delete(Guid id)
     {
         try
         {
             await Contexts.DeleteAsync("owner", id, null);
-            _notes = await Contexts.ListAsync(null, null, null, 200);
+            await ReloadAsync();
             Snackbar.Add(Loc.T("context.deleted"), Severity.Success);
         }
         catch (Exception ex)

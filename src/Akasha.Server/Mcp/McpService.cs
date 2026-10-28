@@ -76,6 +76,8 @@ public class McpService
                 o("""{"type":"object","properties":{"slug":{"type":"string"},"params":{"type":"object"}},"required":["slug"]}""")),
             new("akasha_context_write", "Write to the agent context store — a separate scratch area written DIRECTLY, without owner approval. Use it for working notes; the main vault still requires approval.",
                 o("""{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"project_id":{"type":"string","format":"uuid"},"tags":{"type":"array","items":{"type":"string"}}},"required":["title"]}""")),
+            new("akasha_context_update", "Update one of your own agent context notes (partial: only provided fields change).",
+                o("""{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"title":{"type":"string"},"body":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}}},"required":["id"]}""")),
             new("akasha_context_list", "List agent context notes (optionally filtered by project/agent/text).",
                 o("""{"type":"object","properties":{"project_id":{"type":"string","format":"uuid"},"agent_id":{"type":"string","format":"uuid"},"q":{"type":"string"},"limit":{"type":"integer","default":100,"maximum":500}}}""")),
             new("akasha_context_get", "Get a single agent context note by id.",
@@ -92,7 +94,7 @@ public class McpService
         {
             "akasha_propose" or "akasha_propose_script" or "akasha_get_proposal_status" => Scopes.Propose,
             "akasha_run_script" => Scopes.Scripts,
-            "akasha_context_write" or "akasha_context_delete" => Scopes.Context,
+            "akasha_context_write" or "akasha_context_update" or "akasha_context_delete" => Scopes.Context,
             "akasha_context_list" or "akasha_context_get" => Scopes.Read,
             _ => Scopes.Read,
         };
@@ -115,6 +117,7 @@ public class McpService
             "akasha_get_proposal_status" => await ProposalStatusAsync(),
             "akasha_run_script" => await RunScriptAsync(),
             "akasha_context_write" => await ContextWriteAsync(),
+            "akasha_context_update" => await ContextUpdateAsync(),
             "akasha_context_list" => await ContextListAsync(),
             "akasha_context_get" => await ContextGetAsync(),
             "akasha_context_delete" => await ContextDeleteAsync(),
@@ -217,8 +220,19 @@ public class McpService
             return new { id = n.Id, title = n.Title, project_id = n.ProjectId, created_at = n.CreatedAt };
         }
 
-        async Task<object> ContextListAsync()
+        async Task<object> ContextUpdateAsync()
         {
+            var tags = args.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.Array
+                ? tg.EnumerateArray().Select(x => x.GetString() ?? "").ToList() : null;
+            var title = args.TryGetProperty("title", out var ti) && ti.ValueKind == JsonValueKind.String ? ti.GetString() : null;
+            var body = args.TryGetProperty("body", out var bo) && bo.ValueKind == JsonValueKind.String ? bo.GetString() : null;
+            var agentId = _caller.IsOwner ? (Guid?)null : _caller.Agent!.Id;
+            var n = await _contexts.UpdateAsync(_caller.Actor, Guid.Parse(Str("id")), agentId, title, body, tags, ct)
+                    ?? throw new KeyNotFoundException("context note not found");
+            return new { id = n.Id, title = n.Title, tags = n.Tags, updated_at = n.UpdatedAt };
+        }
+
+        async Task<object> ContextListAsync()        {
             Guid? projectId = args.TryGetProperty("project_id", out var pj) && Guid.TryParse(pj.GetString(), out var pg) ? pg : null;
             Guid? agentId = _caller.IsOwner
                 ? (args.TryGetProperty("agent_id", out var ag) && Guid.TryParse(ag.GetString(), out var af) ? af : null)
